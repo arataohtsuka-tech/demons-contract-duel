@@ -27,7 +27,8 @@
             lastTargetIdx: -1, 
             pendingCardIdx: null,
             lastBidSeen: -1,
-            lastPlayTimestamp: 0
+            lastPlayTimestamp: 0,
+            battleActionTaken: false 
         };
 
         const COLLECTION_NAME = 'demons_contract_rooms_v3'; 
@@ -169,7 +170,13 @@
             window.unsubscribeRoom = onSnapshot(roomRef, (doc) => {
                 if (doc.exists()) {
                     const data = doc.data();
-                    if (data.gameState) window.gameState = data.gameState;
+                    if (data.gameState) {
+                        // Detect turn change to reset local action state
+                        if (window.gameState && window.gameState.battle.activePlayer !== data.gameState.battle.activePlayer) {
+                            window.localState.battleActionTaken = false;
+                        }
+                        window.gameState = data.gameState;
+                    }
                     if (data.status === 'PLAYING') {
                          const waiting = document.getElementById('waiting-screen');
                          if(!waiting.classList.contains('hidden')) {
@@ -286,7 +293,8 @@
                 wrapper.onclick = () => {
                     selector.classList.remove('active');
                     setTimeout(() => selector.classList.add('hidden'), 200);
-                    callback(originalIndex);
+                    callback(originalIndex); // originalIndex is index in passed 'cards', need to map back? 
+                    // Wait, showCardSelector caller should pass objects with original indices if needed.
                 };
                 container.appendChild(wrapper);
             });
@@ -302,7 +310,7 @@
             setTimeout(() => selector.classList.add('hidden'), 200);
         }
 
-        // --- Log & Cut-in ---
+        // --- Log (Japanese) ---
         function addLog(msg) {
             if (!window.gameState.logs) window.gameState.logs = [];
             const timestamp = new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -649,7 +657,7 @@
             // A - Attack
             { id: 'A-1', type: 'A', name: '儀式の短剣', cost: 1, text: '相手に2ダメージを与える。', power: 2, selfDmg: 0, effect: 'dmg' },
             { id: 'A-2', type: 'A', name: '魔力集中', cost: 2, text: 'カードを1枚引く。相手に2ダメージを与える。', power: 2, selfDmg: 0, effect: 'dmg_draw' },
-            { id: 'A-3', type: 'A', name: '浄化の火', cost: 3, text: '相手に3ダメージを与える。捨て札にあるSカードを1枚除外する。', power: 3, selfDmg: 0, effect: 'dmg_purge' },
+            { id: 'A-3', type: 'A', name: '浄化の火', cost: 3, text: '相手に3ダメージを与える。捨て札にあるSカードを1枚除外する（選択）。', power: 3, selfDmg: 0, effect: 'dmg_purge' },
             { id: 'A-4', type: 'A', name: '強欲の剣', cost: 4, text: 'カードを1枚引く。相手に5ダメージを与える。', power: 5, selfDmg: 0, effect: 'dmg_draw' },
             { id: 'A-5', type: 'A', name: '連鎖の呪い', cost: 4, text: '相手に3ダメージを与える。使用後、捨て札ではなく山札の下に戻る。', power: 3, selfDmg: 0, effect: 'dmg_recycle' },
             { id: 'A-6', type: 'A', name: '魂の吸収', cost: 6, text: '相手に7ダメージを与える。自身のライフを3回復する。', power: 7, selfDmg: 0, effect: 'dmg_heal', val: 3 },
@@ -662,9 +670,9 @@
             { id: 'B-5', type: 'B', name: '反射の鏡', cost: 7, text: '次に受けるダメージを無効化し、そのダメージを相手に与える。', power: 0, selfDmg: 0, effect: 'reflect' },
             // C - Control
             { id: 'C-1', type: 'C', name: '魔力の湧出', cost: 0, text: 'このターンのみマナ+2。使用後、このカードはゲームから除外される。', power: 0, selfDmg: 0, effect: 'mana_boost', val: 2, banish: true },
-            { id: 'C-2', type: 'C', name: '未来の視線', cost: 1, text: '山札の上から3枚を見て、好きな順番で戻す。（未実装：シャッフル）', power: 0, selfDmg: 0, effect: 'scry' },
+            { id: 'C-2', type: 'C', name: '未来の視線', cost: 1, text: '山札の上から4枚を見て、好きな順番で戻す。（未実装：シャッフル）', power: 0, selfDmg: 0, effect: 'scry' },
             { id: 'C-3', type: 'C', name: '知識の譲渡', cost: 3, text: 'カードを2枚引く。', power: 0, selfDmg: 0, effect: 'draw_2' },
-            { id: 'C-4', type: 'C', name: '時の砂', cost: 5, text: '捨て札のSカードを全て除外した後、捨て札を山札に戻しシャッフルする。1枚引く。', power: 0, selfDmg: 0, effect: 'reshuffle_draw' },
+            { id: 'C-4', type: 'C', name: '時の砂', cost: 5, text: '捨て札のSカードを1枚除外した後、捨て札を山札に戻しシャッフルする。1枚引く。', power: 0, selfDmg: 0, effect: 'reshuffle_draw' },
             { id: 'C-5', type: 'C', name: '天使の寵愛', cost: 10, text: '【特殊勝利】このゲームに勝利する。', power: 0, selfDmg: 0, effect: 'win' }
         ];
 
@@ -676,7 +684,7 @@
             market: [],
             contractDeck: [],
             bidding: { targetIdx: 0, currentBid: 0, highestBidder: null, turn: 0, passCount: 0, starter: 0 },
-            battle: { activePlayer: 0 }, // Removed passCount as it's no longer needed for alternating logic
+            battle: { activePlayer: 0 }, 
             winner: null,
             winReason: null,
             logs: [],
@@ -702,10 +710,15 @@
                 shield: 0, nullify: false, reflect: false
             }));
 
-            window.gameState.players.forEach(p => {
+            // Initial Decks (Asymmetric)
+            window.gameState.players.forEach((p, index) => {
                 let starters = [];
-                for(let i=0; i<3; i++) starters.push({...CARD_DB[0], uuid: crypto.randomUUID()});
-                for(let i=0; i<2; i++) starters.push({...CARD_DB[1], uuid: crypto.randomUUID()});
+                let s1Count = (index === 0) ? 3 : 2; // P1: 3x S-1, P2: 2x S-1
+                let s2Count = (index === 0) ? 2 : 1; // P1: 2x S-2, P2: 1x S-2
+                
+                for(let i=0; i<s1Count; i++) starters.push({...CARD_DB[0], uuid: crypto.randomUUID()});
+                for(let i=0; i<s2Count; i++) starters.push({...CARD_DB[1], uuid: crypto.randomUUID()});
+                
                 p.deck = shuffle(starters);
                 drawCards(p, CONSTANTS.INITIAL_HAND);
             });
@@ -791,6 +804,7 @@
             
             addLog(`${winner.name} が ${card.name} をライフ ${cost} で落札`);
 
+            // 落札しなかったプレイヤー（＝今回負けた側）が次の開始権を持つ
             let nextStarter = (winnerIdx === 0) ? 1 : 0;
             let nextIdx = window.gameState.bidding.targetIdx + 1;
             startBidding(nextIdx, nextStarter);
@@ -859,12 +873,41 @@
             const oppIdx = (pIdx === 0) ? 1 : 0;
             const opp = window.gameState.players[oppIdx];
 
+            // B-2 logic: Manual select from hand (excluding self)
+            if (card.id === 'B-2' && purgeTargetIdx === null) {
+                // Selectable cards: all cards in hand except the one being played
+                const handCards = player.hand.map((c, i) => ({...c, originalIdx: i})).filter((c, i) => i !== cardIdx);
+                
+                if (handCards.length > 0) {
+                    window.localState.pendingCardIdx = cardIdx;
+                    showCardSelector(handCards, (selectedIndex) => {
+                        if (selectedIndex !== null) {
+                            // selectedIndex is index in filtered array, get original index
+                            const trueHandIdx = handCards[selectedIndex].originalIdx;
+                            playCard(cardIdx, trueHandIdx);
+                        }
+                    });
+                    return; 
+                }
+            }
+
+            // A-3 logic: Manual select from discard
             if (card.id === 'A-3' && purgeTargetIdx === null) {
                 const sCards = player.discard.map((c, i) => ({...c, originalIdx: i})).filter(c => c.type === 'S');
                 if (sCards.length > 0) {
                     window.localState.pendingCardIdx = cardIdx;
                     showCardSelector(sCards, (selectedIndex) => {
-                        if (selectedIndex !== null) playCard(cardIdx, selectedIndex);
+                        // For A-3, logic was using splice on discard directly, so we need original index.
+                        // showCardSelector returns index in the PASSED array.
+                        // We need to map it back to original discard index.
+                        // Wait, previous implementation of showCardSelector used originalIndex from forEach(card, originalIndex).
+                        // But here we pass sCards. The originalIndex in showCardSelector loop is index in sCards.
+                        // So we need to store true index in card object.
+                        
+                        if (selectedIndex !== null) {
+                            const trueDiscardIdx = sCards[selectedIndex].originalIdx;
+                            playCard(cardIdx, trueDiscardIdx);
+                        }
                     });
                     return; 
                 }
@@ -876,7 +919,7 @@
             }
 
             addLog(`${player.name} が ${card.name} を使用`);
-            window.gameState.latestPlay = { card, player: player.name, timestamp: Date.now() };
+            // window.gameState.latestPlay = { card, player: player.name, timestamp: Date.now() }; // Removed
 
             player.mana -= card.cost;
             let dmg = card.power;
@@ -916,19 +959,35 @@
             if (card.effect.includes('heal')) {
                 let heal = card.val || 0;
                 player.life += heal;
+                
+                // B-2 logic execution
+                if (card.id === 'B-2' && purgeTargetIdx !== null) {
+                    const targetName = player.hand[purgeTargetIdx].name;
+                    player.hand.splice(purgeTargetIdx, 1);
+                    addLog(`${targetName} を手札から除外しました`);
+                    
+                    // Adjustment if purged card was before played card
+                    if (purgeTargetIdx < cardIdx) {
+                        cardIdx--;
+                    }
+                }
             }
 
             if (card.effect === 'nullify') player.nullify = true;
             if (card.effect === 'reflect') player.reflect = true;
             if (card.effect === 'mana_boost') player.mana += card.val;
             
+            // A-3 logic execution
             if (card.id === 'A-3' && purgeTargetIdx !== null) {
                 player.discard.splice(purgeTargetIdx, 1);
                 addLog(`捨て札を除外しました`);
             }
             
             if (card.effect === 'reshuffle_draw') {
-                player.discard = player.discard.filter(c => c.type !== 'S');
+                // C-4: Auto purge 1 S
+                const sIndex = player.discard.findIndex(c => c.type === 'S');
+                if(sIndex !== -1) player.discard.splice(sIndex, 1);
+                
                 player.deck = player.deck.concat(player.discard);
                 player.discard = [];
                 player.deck = shuffle(player.deck);
@@ -952,7 +1011,6 @@
             window.pushState();
         }
 
-        // --- HARD PASS LOGIC ---
         function endBattlePhase() {
             if (!checkMyTurn('BATTLE')) return;
             
@@ -961,7 +1019,6 @@
 
             addLog(`${pName} がフェイズ終了`);
 
-            // P1 (0) -> P2 (1) -> Round End
             if (currentActor === 0) {
                 window.gameState.battle.activePlayer = 1;
             } else {
@@ -1215,4 +1272,4 @@
 
     </script>
 </body>
-</html>   
+</html>
