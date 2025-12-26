@@ -52,7 +52,7 @@
                     throw new Error("設定未完了: config.jsを作成するかコード内のmanualConfigを書き換えてください。");
                 }
 
-                statusEl.innerText = "接続中...";
+                statusEl.innerText = "Connecting...";
                 window.firebaseApp = initializeApp(firebaseConfig);
                 window.auth = getAuth(window.firebaseApp);
                 window.db = getFirestore(window.firebaseApp);
@@ -67,7 +67,7 @@
                     if (u) {
                         window.user = u;
                         console.log("Logged in:", u.uid);
-                        statusEl.innerText = "準備完了";
+                        statusEl.innerText = "Ready";
                         statusEl.classList.add('text-green-500');
                         document.getElementById('create-room-btn').disabled = false;
                         document.getElementById('join-room-btn').disabled = false;
@@ -76,7 +76,7 @@
 
             } catch (e) {
                 console.error("Firebase Init Error", e);
-                statusEl.innerText = "エラー: " + e.message;
+                statusEl.innerText = "Error: " + e.message;
             }
         }
 
@@ -84,7 +84,7 @@
         window.createRoom = async function() {
             if (!window.user) return;
             const btn = document.getElementById('create-room-btn');
-            btn.disabled = true; btn.innerText = "作成中...";
+            btn.disabled = true; btn.innerText = "Creating...";
 
             try {
                 const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -96,7 +96,7 @@
                 const roomRef = doc(window.db, 'artifacts', appId, 'public', 'data', COLLECTION_NAME, roomCode);
                 await setDoc(roomRef, {
                     gameState: window.gameState,
-                    players: [{uid: window.user.uid, name: "プレイヤー 1"}],
+                    players: [{uid: window.user.uid, name: "Player 1"}],
                     createdAt: Date.now(),
                     status: 'WAITING'
                 });
@@ -114,30 +114,30 @@
 
             } catch (e) {
                 alert("作成エラー: " + e.message);
-                btn.disabled = false; btn.innerText = "ルーム作成";
+                btn.disabled = false; btn.innerText = "Create Room";
             }
         }
 
         window.joinRoom = async function() {
             if (!window.user) return;
             const btn = document.getElementById('join-room-btn');
-            btn.disabled = true; btn.innerText = "参加中...";
+            btn.disabled = true; btn.innerText = "Joining...";
 
             try {
                 const codeInput = document.getElementById('room-code-input').value.toUpperCase();
-                if (!codeInput) throw new Error("ルームコードを入力してください");
+                if (!codeInput) throw new Error("Please enter a room code");
 
                 const roomRef = doc(window.db, 'artifacts', appId, 'public', 'data', COLLECTION_NAME, codeInput);
                 const snap = await getDoc(roomRef);
 
-                if (!snap.exists()) throw new Error("ルームが見つかりません");
+                if (!snap.exists()) throw new Error("Room not found");
                 const data = snap.data();
-                if (data.status !== 'WAITING') throw new Error("ルームは満員か対戦中です");
+                if (data.status !== 'WAITING') throw new Error("Room is full or playing");
 
                 window.roomId = codeInput;
                 window.myPlayerIndex = 1; // Guest is P2
                 
-                let updatedPlayers = [...data.players, {uid: window.user.uid, name: "プレイヤー 2"}];
+                let updatedPlayers = [...data.players, {uid: window.user.uid, name: "Player 2"}];
                 
                 await updateDoc(roomRef, {
                     players: updatedPlayers,
@@ -149,7 +149,7 @@
 
             } catch (e) {
                 alert("参加エラー: " + e.message);
-                btn.disabled = false; btn.innerText = "ルーム参加";
+                btn.disabled = false; btn.innerText = "Join Room";
             }
         }
         
@@ -333,7 +333,7 @@
             setTimeout(() => {
                 overlay.classList.remove('active');
                 setTimeout(() => overlay.classList.add('hidden'), 300);
-            }, 1500);
+            }, 3000); // 3秒間表示
         }
 
         initFirebase();
@@ -434,9 +434,9 @@
             gap: 1rem; width: 80%; max-width: 800px; max-height: 70vh; overflow-y: auto; padding: 1rem;
         }
 
-        /* Log Window */
+        /* Log Window - Moved to Right Top */
         #log-window {
-            position: absolute; bottom: 10px; left: 10px; width: 250px; height: 200px;
+            position: absolute; top: 70px; right: 10px; width: 220px; height: 180px;
             background: rgba(0, 0, 0, 0.7); border: 1px solid #555; border-radius: 4px;
             font-size: 0.7rem; color: #ccc; z-index: 40; pointer-events: auto;
             display: flex; flex-direction: column;
@@ -447,7 +447,7 @@
 
         /* Cut-in Overlay */
         #cut-in-overlay {
-            z-index: 300; background: rgba(0,0,0,0.7);
+            z-index: 300; background: rgba(0,0,0,0.85); /* Slightly darker */
             transition: all 0.3s ease-out; transform: scale(0.8); opacity: 0;
         }
         #cut-in-overlay.active { transform: scale(1); opacity: 1; }
@@ -464,54 +464,54 @@
     <div id="lobby-screen" class="overlay active" style="z-index: 100;">
         <div class="bg-gray-900 border border-yellow-600 p-8 rounded text-center w-80">
             <h1 class="text-2xl text-yellow-500 mb-4 cinzel">Demon's Contract</h1>
-            <p id="lobby-status" class="text-xs text-gray-500 mb-4">初期化中...</p>
-            <button id="create-room-btn" onclick="createRoom()" disabled class="btn-gothic w-full mb-4">ルーム作成</button>
-            <input type="text" id="room-code-input" placeholder="ルームコード" class="bg-black border border-gray-600 text-white p-2 w-full mb-2 text-center">
-            <button id="join-room-btn" onclick="joinRoom()" disabled class="btn-gothic w-full">ルーム参加</button>
+            <p id="lobby-status" class="text-xs text-gray-500 mb-4">Initializing...</p>
+            <button id="create-room-btn" onclick="createRoom()" disabled class="btn-gothic w-full mb-4">Create Room</button>
+            <input type="text" id="room-code-input" placeholder="Room Code" class="bg-black border border-gray-600 text-white p-2 w-full mb-2 text-center">
+            <button id="join-room-btn" onclick="joinRoom()" disabled class="btn-gothic w-full">Join Room</button>
         </div>
     </div>
 
     <!-- Waiting -->
     <div id="waiting-screen" class="overlay hidden" style="z-index: 110;">
-        <h2 class="text-2xl cinzel text-white mb-4">待機中...</h2>
+        <h2 class="text-2xl cinzel text-white mb-4">Waiting...</h2>
         <div class="flex gap-2 mb-4 items-center">
             <input type="text" id="room-code-display" readonly class="text-4xl text-yellow-500 bg-black border border-gray-600 p-4 rounded text-center w-64 font-bold tracking-widest">
             <button onclick="copyRoomCode()" class="btn-gothic h-full text-2xl">📋</button>
         </div>
-        <p class="text-gray-500 text-xs">対戦相手を待っています...</p>
+        <p class="text-gray-500 text-xs">Waiting for Player 2 to join...</p>
     </div>
 
     <!-- Game Menu Overlay -->
     <div id="game-menu" class="overlay hidden" style="z-index: 200;">
         <div class="bg-gray-900 border border-yellow-600 p-8 rounded text-center w-80 flex flex-col gap-4">
-            <h2 class="text-2xl text-yellow-500 cinzel">メニュー</h2>
-            <button onclick="showCardList()" class="btn-gothic w-full">📖 カード一覧</button>
-            <button onclick="surrenderGame()" class="btn-gothic w-full border-red-500 text-red-500 hover:bg-red-900/30">🏳️ 降参</button>
+            <h2 class="text-2xl text-yellow-500 cinzel">MENU</h2>
+            <button onclick="showCardList()" class="btn-gothic w-full">📖 CARD LIST</button>
+            <button onclick="surrenderGame()" class="btn-gothic w-full border-red-500 text-red-500 hover:bg-red-900/30">🏳️ SURRENDER</button>
             <div class="h-px bg-gray-700 my-2"></div>
-            <button onclick="toggleMenu()" class="btn-gothic w-full border-gray-500 text-gray-400">閉じる</button>
+            <button onclick="toggleMenu()" class="btn-gothic w-full border-gray-500 text-gray-400">CLOSE</button>
         </div>
     </div>
 
     <!-- Card List Viewer -->
     <div id="card-list-viewer" class="overlay hidden" style="z-index: 210;">
-        <h2 class="text-2xl text-yellow-500 mb-4 cinzel">全カード一覧</h2>
+        <h2 class="text-2xl text-yellow-500 mb-4 cinzel">ALL CARDS</h2>
         <div id="all-cards-container" class="discard-grid"></div>
-        <button onclick="closeCardList()" class="btn-gothic mt-4">閉じる</button>
+        <button onclick="closeCardList()" class="btn-gothic mt-4">CLOSE</button>
     </div>
 
     <!-- Discard Viewer -->
     <div id="discard-viewer" class="overlay hidden" style="z-index: 120;">
-        <h2 id="discard-title" class="text-2xl text-yellow-500 mb-4 cinzel">捨て札</h2>
+        <h2 id="discard-title" class="text-2xl text-yellow-500 mb-4 cinzel">DISCARD PILE</h2>
         <div id="discard-cards-container" class="discard-grid"></div>
-        <button onclick="closeDiscard()" class="btn-gothic mt-4">閉じる</button>
+        <button onclick="closeDiscard()" class="btn-gothic mt-4">CLOSE</button>
     </div>
 
     <!-- Card Selector (Purge) -->
     <div id="card-selector" class="overlay hidden" style="z-index: 130;">
-        <h2 class="text-2xl text-yellow-500 mb-4 cinzel">除外するカードを選択</h2>
-        <p class="text-gray-400 mb-4 text-sm">捨て札からゲームから除外するカードを選んでください。</p>
+        <h2 class="text-2xl text-yellow-500 mb-4 cinzel">SELECT A CARD TO PURGE</h2>
+        <p class="text-gray-400 mb-4 text-sm">Choose a card from your discard pile to remove from the game.</p>
         <div id="selector-cards-container" class="selector-grid"></div>
-        <button onclick="closeSelector()" class="btn-gothic mt-4 text-gray-500 border-gray-500">キャンセル</button>
+        <button onclick="closeSelector()" class="btn-gothic mt-4 text-gray-500 border-gray-500">CANCEL</button>
     </div>
 
     <!-- Cut-in Overlay -->
@@ -534,24 +534,24 @@
 
     <main class="flex-grow flex flex-col relative p-2 overflow-hidden">
         
-        <!-- Log Window -->
+        <!-- Log Window (Position Changed) -->
         <div id="log-window">
-            <div id="log-header">バトルログ</div>
+            <div id="log-header">BATTLE LOG</div>
             <div id="log-content"></div>
         </div>
 
         <!-- Opponent -->
         <div class="h-1/4 flex justify-between items-start px-4">
             <div class="flex flex-col items-center">
-                <div class="text-xs text-gray-500">ライフ</div>
+                <div class="text-xs text-gray-500">LIFE</div>
                 <div id="p2-life" class="text-3xl text-red-500 cinzel">66</div>
                 <div id="p2-mana" class="mana-container"></div>
                 <div id="p2-shield" class="text-blue-400 text-xs mt-1"></div>
             </div>
             <div class="flex gap-2">
-                <div class="w-16 h-24 bg-gray-800 border border-gray-600 rounded flex items-center justify-center text-xs text-gray-500">山札 <span id="p2-deck-count" class="ml-1 text-white">0</span></div>
+                <div class="w-16 h-24 bg-gray-800 border border-gray-600 rounded flex items-center justify-center text-xs text-gray-500">Deck <span id="p2-deck-count" class="ml-1 text-white">0</span></div>
                 <div class="w-16 h-24 bg-gray-800 border border-gray-600 rounded flex items-center justify-center text-xs text-gray-500 cursor-pointer hover:border-white transition-colors" onclick="viewDiscard(window.myPlayerIndex === 0 ? 1 : 0)">
-                    捨て札
+                    Disc
                 </div>
             </div>
         </div>
@@ -563,9 +563,9 @@
             <!-- Bidding UI -->
             <div id="bidding-ui" class="absolute bg-black/90 border border-yellow-600 p-4 rounded z-20 flex hidden w-[500px]">
                 <div class="flex-1 flex flex-col items-center gap-2 pr-4 border-r border-gray-700">
-                    <div class="text-yellow-500 cinzel">競り中</div>
+                    <div class="text-yellow-500 cinzel">BIDDING</div>
                     <div class="flex w-full justify-between items-center text-sm text-gray-300">
-                        <span>現在値: <span id="bid-current-val" class="text-white font-bold text-xl">0</span></span>
+                        <span>Current High: <span id="bid-current-val" class="text-white font-bold text-xl">0</span></span>
                     </div>
                     <div class="text-xs text-red-400 mb-2" id="bid-highest-player">-</div>
                     
@@ -576,31 +576,31 @@
                             <button onclick="adjustBid(1)" class="btn-gothic px-2 py-0">+</button>
                         </div>
                         <div class="flex gap-2 justify-center">
-                            <button onclick="submitBid()" class="btn-gothic bg-red-900/50">宣言</button>
-                            <button onclick="passBid()" class="btn-gothic border-gray-600 text-gray-400">パス</button>
+                            <button onclick="submitBid()" class="btn-gothic bg-red-900/50">BID</button>
+                            <button onclick="passBid()" class="btn-gothic border-gray-600 text-gray-400">PASS</button>
                         </div>
-                        <div class="text-xs text-gray-500 mt-2 text-center">上限: ライフ - 1</div>
+                        <div class="text-xs text-gray-500 mt-2 text-center">Max Bid: Life - 1</div>
                     </div>
-                    <div id="bid-waiting-msg" class="text-xs text-yellow-500 animate-pulse hidden">相手の操作待ち...</div>
+                    <div id="bid-waiting-msg" class="text-xs text-yellow-500 animate-pulse hidden">Waiting...</div>
                 </div>
 
                 <div class="flex-1 flex flex-col items-center justify-center pl-4">
-                    <div class="text-xs text-gray-400 mb-1">対象カード</div>
+                    <div class="text-xs text-gray-400 mb-1">Target Card</div>
                     <div id="bid-card-preview" class="scale-90 origin-top"></div>
                 </div>
             </div>
 
             <!-- Battle Turn Indicator -->
             <div id="battle-ui" class="absolute bottom-4 z-20 hidden">
-                <button id="end-turn-btn" onclick="endBattlePhase()" class="btn-gothic bg-blue-900/50 text-white px-8 py-2">ターン終了</button>
+                <button id="end-turn-btn" onclick="endBattlePhase()" class="btn-gothic bg-blue-900/50 text-white px-8 py-2">END TURN</button>
             </div>
-            <div id="wait-banner" class="absolute bottom-12 bg-black/80 px-4 py-1 rounded text-gray-400 text-sm hidden">相手のターン</div>
+            <div id="wait-banner" class="absolute bottom-12 bg-black/80 px-4 py-1 rounded text-gray-400 text-sm hidden">Opponent's Turn</div>
         </div>
 
         <!-- Player -->
         <div class="h-1/3 flex justify-between items-end px-4 pb-2 bg-gradient-to-t from-black/80 to-transparent">
             <div class="flex flex-col items-center">
-                <div class="text-xs text-gray-500">ライフ</div>
+                <div class="text-xs text-gray-500">LIFE</div>
                 <div id="p1-life" class="text-3xl text-red-500 cinzel">66</div>
                 <div id="p1-mana" class="mana-container"></div>
                 <div id="p1-shield" class="text-blue-400 text-xs mt-1"></div>
@@ -609,12 +609,12 @@
             <div class="flex gap-4 items-end">
                 <div class="flex flex-col items-center">
                     <div id="p1-hand" class="flex gap-2 mb-2 justify-center"></div>
-                    <div class="text-xs text-gray-500">手札</div>
+                    <div class="text-xs text-gray-500">HAND</div>
                 </div>
                 <div class="flex gap-2">
-                    <div class="w-16 h-24 bg-gray-800 border border-gray-600 rounded flex items-center justify-center text-xs text-gray-500 relative">山札 <span id="p1-deck-count" class="absolute -top-2 -right-2 bg-blue-600 text-white rounded-full w-5 h-5 flex items-center justify-center">0</span></div>
+                    <div class="w-16 h-24 bg-gray-800 border border-gray-600 rounded flex items-center justify-center text-xs text-gray-500 relative">Deck <span id="p1-deck-count" class="absolute -top-2 -right-2 bg-blue-600 text-white rounded-full w-5 h-5 flex items-center justify-center">0</span></div>
                     <div class="w-16 h-24 bg-gray-800 border border-gray-600 rounded flex items-center justify-center text-xs text-gray-500 cursor-pointer hover:border-white transition-colors" onclick="viewDiscard(window.myPlayerIndex)">
-                        捨て札
+                        Disc
                     </div>
                 </div>
             </div>
@@ -625,7 +625,7 @@
     <div id="game-over-overlay" class="overlay hidden" style="z-index: 200;">
         <h2 id="winner-text" class="text-4xl text-yellow-500 mb-4 cinzel">WINNER</h2>
         <p id="win-reason" class="text-gray-400 mb-8">Reason</p>
-        <button onclick="location.reload()" class="btn-gothic">ロビーに戻る</button>
+        <button onclick="location.reload()" class="btn-gothic">BACK TO LOBBY</button>
     </div>
 
     <script>
@@ -685,7 +685,7 @@
             window.gameState.contractDeck = shuffle(deck);
 
             window.gameState.players = [0, 1].map(id => ({
-                id, name: `プレイヤー ${id+1}`,
+                id, name: `Player ${id+1}`,
                 life: CONSTANTS.INITIAL_LIFE,
                 mana: 1, maxMana: 1,
                 deck: [], hand: [], discard: [],
@@ -722,7 +722,7 @@
                 p.mana = mana;
             });
 
-            addLog(`=== 第 ${window.gameState.round} ラウンド 開始 ===`);
+            addLog(`=== ROUND ${window.gameState.round} STARTED ===`);
 
             setTimeout(() => {
                 // Draft bidding start rotates by round
@@ -745,7 +745,7 @@
                 starter: starterIdx
             };
             const targetName = window.gameState.market[cardIdx]?.name || "Unknown";
-            addLog(`${targetName} の競り開始 (開始: プレイヤー ${starterIdx + 1})`);
+            addLog(`Bidding started for: ${targetName} (Starter: Player ${starterIdx + 1})`);
             window.pushState();
         }
 
@@ -779,10 +779,8 @@
             winner.life -= cost;
             winner.discard.push(card); 
             
-            addLog(`${winner.name} が ${card.name} をライフ ${cost} で落札`);
+            addLog(`${winner.name} won ${card.name} for ${cost} life.`);
 
-            // Next card starter is the LOSER (or other player if tied/passed)
-            // Logic: Winner bought, so OTHER player starts next bid
             let nextStarter = (winnerIdx === 0) ? 1 : 0;
             let nextIdx = window.gameState.bidding.targetIdx + 1;
             startBidding(nextIdx, nextStarter);
@@ -808,7 +806,7 @@
             window.gameState.bidding.turn = (window.myPlayerIndex === 0) ? 1 : 0;
             window.gameState.bidding.passCount = 0;
             
-            addLog(`${me.name} が ${val} を宣言`);
+            addLog(`${me.name} bids ${val}.`);
             window.pushState();
         }
 
@@ -816,7 +814,7 @@
             if (!checkMyTurn('BID')) return;
             
             const me = window.gameState.players[window.myPlayerIndex];
-            addLog(`${me.name} がパス`);
+            addLog(`${me.name} passes.`);
 
             if (window.gameState.bidding.highestBidder !== null) {
                 resolveBid(window.gameState.bidding.highestBidder, window.gameState.bidding.currentBid);
@@ -824,7 +822,7 @@
                 window.gameState.bidding.passCount = (window.gameState.bidding.passCount || 0) + 1;
                 
                 if (window.gameState.bidding.passCount >= 2) {
-                    addLog("両者パス。カードは破棄されました");
+                    addLog("Both passed. Card discarded.");
                     let roundOwner = (window.gameState.round % 2 !== 0) ? 0 : 1; 
                     let nextIdx = window.gameState.bidding.targetIdx + 1;
                     startBidding(nextIdx, roundOwner);
@@ -840,7 +838,7 @@
             // 【修正】バトルフェイズの開始は常に Player 1
             window.gameState.battle.activePlayer = 0;
             window.gameState.battle.passCount = 0; 
-            addLog("=== バトルフェイズ 開始 ===");
+            addLog("=== BATTLE PHASE START ===");
             window.pushState();
         }
 
@@ -868,7 +866,7 @@
                 return;
             }
 
-            addLog(`${player.name} が ${card.name} を使用`);
+            addLog(`${player.name} plays ${card.name}`);
             window.gameState.latestPlay = { card, player: player.name, timestamp: Date.now() };
 
             window.gameState.battle.passCount = 0;
@@ -881,7 +879,7 @@
 
             if (card.effect === 'win') {
                 window.gameState.winner = pIdx;
-                window.gameState.winReason = "天使の寵愛";
+                window.gameState.winReason = "Angel's Favor";
             }
 
             if (card.effect.includes('dmg')) {
@@ -889,11 +887,11 @@
                     player.life -= dmg; 
                     opp.reflect = false;
                     dmg = 0;
-                    addLog(`ダメージ反射！`);
+                    addLog(`Damage reflected!`);
                 } else if (opp.nullify) {
                     dmg = 0;
                     opp.nullify = false;
-                    addLog(`ダメージ無効化！`);
+                    addLog(`Damage nullified!`);
                 } else {
                     if (opp.shield > 0) {
                         let blocked = Math.min(opp.shield, dmg);
@@ -920,7 +918,7 @@
             
             if (card.id === 'A-3' && purgeTargetIdx !== null) {
                 player.discard.splice(purgeTargetIdx, 1);
-                addLog(`捨て札を除外しました`);
+                addLog(`Purged a card from discard.`);
             }
             
             if (card.effect === 'reshuffle_draw') {
@@ -929,7 +927,7 @@
                 player.discard = [];
                 player.deck = shuffle(player.deck);
                 drawCards(player, 1);
-                addLog(`捨て札を山札に戻しました`);
+                addLog(`Reshuffled discard into deck.`);
             }
 
             if (card.effect === 'scry') { }
@@ -937,7 +935,7 @@
             player.hand.splice(cardIdx, 1);
             
             if (card.banish) {
-                addLog(`${card.name} は除外されました`);
+                addLog(`${card.name} was banished.`);
             } else if (card.effect === 'dmg_recycle') {
                 player.deck.unshift(card);
             } else {
@@ -955,14 +953,14 @@
             
             if (!window.localState.battleActionTaken) {
                 window.gameState.battle.passCount += 1;
-                addLog(`${window.gameState.players[window.myPlayerIndex].name} がパス`);
+                addLog(`${window.gameState.players[window.myPlayerIndex].name} passes.`);
             } else {
                 window.gameState.battle.passCount = 0; 
-                addLog(`${window.gameState.players[window.myPlayerIndex].name} がターン終了`);
+                addLog(`${window.gameState.players[window.myPlayerIndex].name} ends turn.`);
             }
 
             if (window.gameState.battle.passCount >= 2) {
-                addLog("両者パス。バトルフェイズ終了");
+                addLog("Both passed. End of Battle Phase.");
                 endRound();
                 return;
             }
@@ -986,8 +984,8 @@
             if (window.gameState.round > CONSTANTS.MAX_ROUNDS) {
                 let p1 = window.gameState.players[0];
                 let p2 = window.gameState.players[1];
-                if(p1.life > p2.life) forceEndGame("Player 1", "時間切れ");
-                else forceEndGame("Player 2", "時間切れ");
+                if(p1.life > p2.life) forceEndGame("Player 1", "Time Limit");
+                else forceEndGame("Player 2", "Time Limit");
                 return;
             } else {
                 startRound();
@@ -997,7 +995,7 @@
         // --- Utils ---
         function addLog(msg) {
             if (!window.gameState.logs) window.gameState.logs = [];
-            const ts = new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            const ts = new Date().toTimeString().split(' ')[0];
             window.gameState.logs.push(`[${ts}] ${msg}`);
             if (window.gameState.logs.length > 50) window.gameState.logs.shift();
         }
@@ -1081,7 +1079,7 @@
                 const currentBid = window.gameState.bidding.currentBid;
                 document.getElementById('bid-current-val').innerText = currentBid;
                 let highest = window.gameState.bidding.highestBidder;
-                document.getElementById('bid-highest-player').innerText = highest === null ? "None" : (highest === window.myPlayerIndex ? "あなた" : "相手");
+                document.getElementById('bid-highest-player').innerText = highest === null ? "None" : (highest === window.myPlayerIndex ? "YOU" : "OPPONENT");
 
                 if (isMyBidTurn) {
                     document.getElementById('bid-controls').classList.remove('hidden');
@@ -1219,7 +1217,7 @@
             setTimeout(() => {
                 overlay.classList.remove('active');
                 setTimeout(() => overlay.classList.add('hidden'), 300);
-            }, 1500);
+            }, 3000); // 3秒間表示
         }
 
         // Particle BG
