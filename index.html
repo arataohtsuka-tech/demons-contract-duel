@@ -23,7 +23,13 @@
         window.roomId = null;
         window.unsubscribeRoom = null;
         window.user = null;
-        window.localState = { lastTargetIdx: -1, pendingCardIdx: null };
+        window.localState = { 
+            lastTargetIdx: -1, 
+            pendingCardIdx: null,
+            lastBidSeen: -1,
+            lastPlayTimestamp: 0,
+            battleActionTaken: false 
+        };
 
         const COLLECTION_NAME = 'demons_contract_rooms_v3'; 
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
@@ -164,7 +170,13 @@
             window.unsubscribeRoom = onSnapshot(roomRef, (doc) => {
                 if (doc.exists()) {
                     const data = doc.data();
-                    if (data.gameState) window.gameState = data.gameState;
+                    if (data.gameState) {
+                        // Detect turn change to reset local action state
+                        if (window.gameState && window.gameState.battle.activePlayer !== data.gameState.battle.activePlayer) {
+                            window.localState.battleActionTaken = false;
+                        }
+                        window.gameState = data.gameState;
+                    }
                     if (data.status === 'PLAYING') {
                          const waiting = document.getElementById('waiting-screen');
                          if(!waiting.classList.contains('hidden')) {
@@ -185,7 +197,7 @@
             } catch (e) { console.error("Sync Error:", e); }
         }
 
-        // --- Discard View Logic ---
+        // --- View Logic ---
         window.viewDiscard = function(playerIdx) {
             if (!window.gameState) return;
             const targetPlayer = window.gameState.players[playerIdx];
@@ -215,7 +227,6 @@
             setTimeout(() => viewer.classList.add('hidden'), 200);
         }
 
-        // --- Menu & Card List Logic ---
         window.toggleMenu = function() {
             const menu = document.getElementById('game-menu');
             if (menu.classList.contains('hidden')) {
@@ -231,11 +242,9 @@
         window.showCardList = function() {
             const viewer = document.getElementById('card-list-viewer');
             const container = document.getElementById('all-cards-container');
-            
             container.innerHTML = '';
             
             const sortedCards = [...CARD_DB].sort((a, b) => a.cost - b.cost);
-            
             sortedCards.forEach(card => {
                 container.innerHTML += createCardHTML(card, 'transform scale-90');
             });
@@ -259,13 +268,14 @@
             if(!confirm("本当に降参しますか？\nこの操作は取り消せません。")) return;
             
             const oppIdx = window.myPlayerIndex === 0 ? 1 : 0;
+            const pName = window.gameState.players[window.myPlayerIndex].name;
             window.gameState.winner = oppIdx;
             window.gameState.winReason = "Surrender";
+            addLog(`${pName} surrendered.`);
             window.pushState();
             window.toggleMenu();
         }
 
-        // --- Card Selector Logic (For Purge) ---
         window.showCardSelector = function(cards, callback) {
             const selector = document.getElementById('card-selector');
             const container = document.getElementById('selector-cards-container');
@@ -299,6 +309,33 @@
             setTimeout(() => selector.classList.add('hidden'), 200);
         }
 
+        // --- Log & Cut-in ---
+        function addLog(msg) {
+            if (!window.gameState.logs) window.gameState.logs = [];
+            const timestamp = new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            window.gameState.logs.push(`[${timestamp}] ${msg}`);
+            // Keep log size reasonable
+            if (window.gameState.logs.length > 50) window.gameState.logs.shift();
+        }
+
+        function showCutIn(card, playerName) {
+            const overlay = document.getElementById('cut-in-overlay');
+            const container = document.getElementById('cut-in-card-container');
+            const nameEl = document.getElementById('cut-in-player-name');
+            
+            nameEl.innerText = `${playerName} PLAYS`;
+            container.innerHTML = createCardHTML(card, 'transform scale-150 shadow-2xl');
+            
+            overlay.classList.remove('hidden');
+            void overlay.offsetWidth; 
+            overlay.classList.add('active');
+            
+            setTimeout(() => {
+                overlay.classList.remove('active');
+                setTimeout(() => overlay.classList.add('hidden'), 300);
+            }, 1500);
+        }
+
         initFirebase();
     </script>
     
@@ -324,12 +361,11 @@
 
         h1, h2, h3, .cinzel { font-family: 'Cinzel', serif; }
 
-        /* Background */
         #bg-canvas { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; opacity: 0.3; }
 
         /* Card */
         .card {
-            width: 140px; height: 210px; /* Slightly taller for text */
+            width: 140px; height: 210px;
             background: var(--card-bg);
             border: 2px solid #333; border-radius: 8px;
             position: relative;
@@ -356,16 +392,10 @@
 
         .card-title { font-size: 0.85rem; font-weight: bold; text-align: center; margin-top: 14px; line-height: 1.1; }
         .card-art { flex-grow: 1; display: flex; align-items: center; justify-content: center; font-size: 1.8rem; }
-        /* Expanded Card Description */
         .card-desc { 
-            font-size: 0.7rem; 
-            text-align: center; 
-            color: #ccc; 
-            line-height: 1.3; 
-            min-height: 60px; /* Fixed height area for text */
-            padding: 4px;
-            background: rgba(0,0,0,0.3);
-            border-radius: 4px;
+            font-size: 0.7rem; text-align: center; color: #ccc; 
+            line-height: 1.3; min-height: 60px; padding: 4px;
+            background: rgba(0,0,0,0.3); border-radius: 4px;
             display: flex; align-items: center; justify-content: center;
         }
 
@@ -388,7 +418,6 @@
         .overlay.active { opacity: 1; pointer-events: all; }
         .hidden { display: none !important; }
 
-        /* Mana Bar */
         .mana-container { display: flex; gap: 2px; margin-top: 4px; justify-content: center; }
         .mana-pip { width: 12px; height: 12px; border-radius: 50%; background: #333; border: 1px solid #555; }
         .mana-pip.active { background: var(--mana-blue); border-color: #fff; box-shadow: 0 0 5px var(--mana-blue); }
@@ -400,23 +429,32 @@
         }
         @keyframes floatUp { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-50px); } }
         
-        /* Grid Layouts */
         .discard-grid, .selector-grid {
             display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-            gap: 1rem; width: 80%; max-width: 800px; max-height: 70vh; overflow-y: auto;
-            padding: 1rem;
+            gap: 1rem; width: 80%; max-width: 800px; max-height: 70vh; overflow-y: auto; padding: 1rem;
         }
 
-        /* Last Action Banner */
-        #last-action-display {
-            position: absolute; top: 70px; left: 50%; transform: translateX(-50%);
-            background: linear-gradient(90deg, transparent, rgba(0,0,0,0.8), transparent);
-            padding: 0.5rem 2rem; border-top: 1px solid #555; border-bottom: 1px solid #555;
-            color: #ffd700; font-family: 'Cinzel', serif; font-size: 1rem;
-            pointer-events: none; opacity: 0; transition: opacity 0.5s; z-index: 15;
-            text-shadow: 0 0 10px black; white-space: nowrap;
+        /* Log Window */
+        #log-window {
+            position: absolute; bottom: 10px; left: 10px; width: 250px; height: 200px;
+            background: rgba(0, 0, 0, 0.7); border: 1px solid #555; border-radius: 4px;
+            font-size: 0.7rem; color: #ccc; z-index: 40; pointer-events: auto;
+            display: flex; flex-direction: column;
         }
-        #last-action-display.show { opacity: 1; }
+        #log-header { background: #333; padding: 4px 8px; font-weight: bold; cursor: move; }
+        #log-content { flex-grow: 1; overflow-y: auto; padding: 8px; display: flex; flex-direction: column-reverse; }
+        .log-entry { margin-bottom: 4px; border-bottom: 1px solid #222; padding-bottom: 2px; }
+
+        /* Cut-in Overlay */
+        #cut-in-overlay {
+            z-index: 300; background: rgba(0,0,0,0.7);
+            transition: all 0.3s ease-out; transform: scale(0.8); opacity: 0;
+        }
+        #cut-in-overlay.active { transform: scale(1); opacity: 1; }
+        #cut-in-player-name {
+            font-size: 3rem; color: var(--accent-gold); text-shadow: 0 0 20px black; 
+            margin-bottom: 2rem; letter-spacing: 0.2rem;
+        }
     </style>
 </head>
 <body class="h-screen flex flex-col">
@@ -476,6 +514,12 @@
         <button onclick="closeSelector()" class="btn-gothic mt-4 text-gray-500 border-gray-500">CANCEL</button>
     </div>
 
+    <!-- Cut-in Overlay -->
+    <div id="cut-in-overlay" class="overlay hidden">
+        <h2 id="cut-in-player-name" class="cinzel font-bold">PLAYER PLAYS</h2>
+        <div id="cut-in-card-container"></div>
+    </div>
+
     <!-- Game UI -->
     <header class="h-12 bg-black/80 flex justify-between items-center px-4 border-b border-gray-800">
         <div class="flex items-center gap-4">
@@ -490,8 +534,11 @@
 
     <main class="flex-grow flex flex-col relative p-2 overflow-hidden">
         
-        <!-- Last Action Banner -->
-        <div id="last-action-display">Player used Card Name</div>
+        <!-- Log Window -->
+        <div id="log-window">
+            <div id="log-header">BATTLE LOG</div>
+            <div id="log-content"></div>
+        </div>
 
         <!-- Opponent -->
         <div class="h-1/4 flex justify-between items-start px-4">
@@ -582,7 +629,7 @@
     </div>
 
     <script>
-        // --- CONSTANTS & CARD DB (Updated Text) ---
+        // --- CONSTANTS & CARD DB (Updated IDs) ---
         const CONSTANTS = { MAX_ROUNDS: 10, INITIAL_LIFE: 66, INITIAL_HAND: 3 };
 
         const CARD_DB = [
@@ -618,16 +665,16 @@
             players: [], 
             market: [],
             contractDeck: [],
-            bidding: { targetIdx: 0, currentBid: 0, highestBidder: null, turn: 0, passCount: 0 },
-            battle: { activePlayer: 0 },
+            bidding: { targetIdx: 0, currentBid: 0, highestBidder: null, turn: 0, passCount: 0, starter: 0 },
+            battle: { activePlayer: 0, passCount: 0 }, // Changed structure
             winner: null,
             winReason: null,
-            lastAction: null // For action log
+            logs: [],
+            latestPlay: { cardId: null, player: null, timestamp: 0 }
         };
 
         // --- Logic ---
         function initGameState() {
-            // Deck Setup: 2 copies of each non-S card
             let deck = [];
             CARD_DB.forEach(c => {
                 if(c.type !== 'S') {
@@ -637,28 +684,26 @@
             });
             window.gameState.contractDeck = shuffle(deck);
 
-            // Players Setup
             window.gameState.players = [0, 1].map(id => ({
                 id, name: `Player ${id+1}`,
                 life: CONSTANTS.INITIAL_LIFE,
-                mana: 1, maxMana: 1, // Round 1 starts with 1 mana
+                mana: 1, maxMana: 1,
                 deck: [], hand: [], discard: [],
                 shield: 0, nullify: false, reflect: false
             }));
 
-            // Initial Decks
             window.gameState.players.forEach(p => {
                 let starters = [];
-                for(let i=0; i<3; i++) starters.push({...CARD_DB[0], uuid: crypto.randomUUID()}); // 3x S-1
-                for(let i=0; i<2; i++) starters.push({...CARD_DB[1], uuid: crypto.randomUUID()}); // 2x S-2
+                for(let i=0; i<3; i++) starters.push({...CARD_DB[0], uuid: crypto.randomUUID()});
+                for(let i=0; i<2; i++) starters.push({...CARD_DB[1], uuid: crypto.randomUUID()});
                 p.deck = shuffle(starters);
                 drawCards(p, CONSTANTS.INITIAL_HAND);
             });
 
-            // Initialize Winner
             window.gameState.winner = null;
             window.gameState.winReason = null;
-            window.gameState.lastAction = null;
+            window.gameState.logs = [];
+            window.gameState.latestPlay = { cardId: null, player: null, timestamp: 0 };
 
             startRound();
         }
@@ -670,7 +715,6 @@
                 if(window.gameState.contractDeck.length > 0) window.gameState.market.push(window.gameState.contractDeck.pop());
             }
             
-            // Initial Mana for Round
             let mana = window.gameState.round;
             if(mana > 10) mana = 10;
             window.gameState.players.forEach(p => {
@@ -678,9 +722,10 @@
                 p.mana = mana;
             });
 
-            // Start Bidding with Round Player
-            // Round 1 -> P1, Round 2 -> P2...
+            addLog(`=== ROUND ${window.gameState.round} STARTED ===`);
+
             setTimeout(() => {
+                // Draft bidding start rotates by round
                 startBidding(0, (window.gameState.round % 2 !== 0) ? 0 : 1);
             }, 1000);
         }
@@ -695,9 +740,12 @@
                 targetIdx: cardIdx,
                 currentBid: 0,
                 highestBidder: null,
-                turn: starterIdx, // The loser of previous bid (or round starter) starts
-                passCount: 0 // New logic: track consecutive passes
+                turn: starterIdx,
+                passCount: 0,
+                starter: starterIdx
             };
+            const targetName = window.gameState.market[cardIdx]?.name || "Unknown";
+            addLog(`Bidding started for: ${targetName} (Starter: Player ${starterIdx + 1})`);
             window.pushState();
         }
 
@@ -713,15 +761,12 @@
             if (!checkMyTurn('BID')) return;
             const el = document.getElementById('player-bid-val');
             let val = parseInt(el.innerText) + delta;
+            
             let min = window.gameState.bidding.currentBid + 1;
-            if (window.gameState.bidding.currentBid === 0) min = 1;
+            if (val < min) val = min;
             
             const me = window.gameState.players[window.myPlayerIndex];
-            
-            // ビッド上限: ライフ - 1
             let maxBid = Math.max(1, me.life - 1); 
-            
-            if (val < min) val = min;
             if (val > maxBid) val = maxBid;
             
             el.innerText = val;
@@ -734,7 +779,10 @@
             winner.life -= cost;
             winner.discard.push(card); 
             
-            // カードを獲得しなかったプレイヤー（＝今回負けた側）が次の開始権を持つ
+            addLog(`${winner.name} won ${card.name} for ${cost} life.`);
+
+            // Next card starter is the LOSER (or other player if tied/passed)
+            // Logic: Winner bought, so OTHER player starts next bid
             let nextStarter = (winnerIdx === 0) ? 1 : 0;
             let nextIdx = window.gameState.bidding.targetIdx + 1;
             startBidding(nextIdx, nextStarter);
@@ -750,43 +798,37 @@
                 return;
             }
 
-            // 【変更】もし相手が既にパスしていたら（passCount > 0）、即座に落札して終了
             if (window.gameState.bidding.passCount > 0) {
                 resolveBid(window.myPlayerIndex, val);
                 return;
             }
 
-            // 通常の入札処理（相手にターンを渡す）
             window.gameState.bidding.currentBid = val;
             window.gameState.bidding.highestBidder = window.myPlayerIndex;
             window.gameState.bidding.turn = (window.myPlayerIndex === 0) ? 1 : 0;
-            window.gameState.bidding.passCount = 0; // 入札があったのでパスカウントリセット
+            window.gameState.bidding.passCount = 0;
+            
+            addLog(`${me.name} bids ${val}.`);
             window.pushState();
         }
 
         function passBid() {
             if (!checkMyTurn('BID')) return;
             
+            const me = window.gameState.players[window.myPlayerIndex];
+            addLog(`${me.name} passes.`);
+
             if (window.gameState.bidding.highestBidder !== null) {
-                // すでに値がついている場合 -> パスした人が降りて、ビッドした人が落札
                 resolveBid(window.gameState.bidding.highestBidder, window.gameState.bidding.currentBid);
             } else {
-                // まだ値がついていない（初手パスなど）場合
                 window.gameState.bidding.passCount = (window.gameState.bidding.passCount || 0) + 1;
                 
                 if (window.gameState.bidding.passCount >= 2) {
-                    // 両者パス -> 除外して次へ
-                    // 次の開始プレイヤーは今回の開始プレイヤーのままにする
-                    let currentStarter = window.gameState.bidding.turn === 0 ? 1 : 0; // 今回のターンの前の人=開始プレイヤー
-                    // 正確には turn が今のプレイヤーなので、前回は逆。
-                    // シンプルに：ラウンドプレイヤーに権利を戻すか、そのまま次の人か。
-                    // ルール：「獲得しなかったプレイヤーが次」→両者獲得せず。
-                    // ここではシンプルにラウンドプレイヤー（偶数奇数）に戻します。
+                    addLog("Both passed. Card discarded.");
                     let roundOwner = (window.gameState.round % 2 !== 0) ? 0 : 1; 
                     let nextIdx = window.gameState.bidding.targetIdx + 1;
                     startBidding(nextIdx, roundOwner);
                 } else {
-                    // まだ1人目 -> 相手にターンを渡す
                     window.gameState.bidding.turn = (window.myPlayerIndex === 0) ? 1 : 0;
                     window.pushState();
                 }
@@ -795,8 +837,10 @@
 
         function startBattlePhase() {
             window.gameState.phase = 'BATTLE';
-            // Round 1 -> P1 starts battle first
-            window.gameState.battle.activePlayer = (window.gameState.round % 2 !== 0) ? 0 : 1;
+            // 【修正】バトルフェイズの開始は常に Player 1
+            window.gameState.battle.activePlayer = 0;
+            window.gameState.battle.passCount = 0; 
+            addLog("=== BATTLE PHASE START ===");
             window.pushState();
         }
 
@@ -808,43 +852,33 @@
             const oppIdx = (pIdx === 0) ? 1 : 0;
             const opp = window.gameState.players[oppIdx];
 
-            // Manual Select Logic for A-3 (Purge)
             if (card.id === 'A-3' && purgeTargetIdx === null) {
                 const sCards = player.discard.map((c, i) => ({...c, originalIdx: i})).filter(c => c.type === 'S');
                 if (sCards.length > 0) {
                     window.localState.pendingCardIdx = cardIdx;
                     showCardSelector(sCards, (selectedIndex) => {
-                        // Recall playCard with selection
                         if (selectedIndex !== null) playCard(cardIdx, selectedIndex);
-                        else { /* Cancelled, do nothing */ }
                     });
-                    return; // Stop execution to wait for UI
+                    return; 
                 }
-                // If no S cards, just play normally (no purge)
             }
 
-            // Mana Check
             if (player.mana < card.cost) {
                 alert("Not enough Mana!");
                 return;
             }
 
-            // Update Action Log
-            window.gameState.lastAction = {
-                player: player.name,
-                card: card.name,
-                text: card.text
-            };
+            addLog(`${player.name} plays ${card.name}`);
+            window.gameState.latestPlay = { card, player: player.name, timestamp: Date.now() };
 
-            // Pay Mana
+            window.gameState.battle.passCount = 0;
+            window.localState.battleActionTaken = true; 
+
             player.mana -= card.cost;
-
-            // Resolve Effect
             let dmg = card.power;
             
             if (card.selfDmg > 0) player.life -= card.selfDmg;
 
-            // Special Win
             if (card.effect === 'win') {
                 window.gameState.winner = pIdx;
                 window.gameState.winReason = "Angel's Favor";
@@ -852,12 +886,14 @@
 
             if (card.effect.includes('dmg')) {
                 if (opp.reflect) {
-                    player.life -= dmg; // Reflect full damage
+                    player.life -= dmg; 
                     opp.reflect = false;
                     dmg = 0;
+                    addLog(`Damage reflected!`);
                 } else if (opp.nullify) {
                     dmg = 0;
                     opp.nullify = false;
+                    addLog(`Damage nullified!`);
                 } else {
                     if (opp.shield > 0) {
                         let blocked = Math.min(opp.shield, dmg);
@@ -882,37 +918,33 @@
             if (card.effect === 'reflect') player.reflect = true;
             if (card.effect === 'mana_boost') player.mana += card.val;
             
-            // Logic for A-3 Purge (Selective)
             if (card.id === 'A-3' && purgeTargetIdx !== null) {
-                // purgeTargetIdx is original index in discard
                 player.discard.splice(purgeTargetIdx, 1);
+                addLog(`Purged a card from discard.`);
             }
             
             if (card.effect === 'reshuffle_draw') {
-                // Auto purge S logic for C-4
                 player.discard = player.discard.filter(c => c.type !== 'S');
                 player.deck = player.deck.concat(player.discard);
                 player.discard = [];
                 player.deck = shuffle(player.deck);
                 drawCards(player, 1);
+                addLog(`Reshuffled discard into deck.`);
             }
 
-            if (card.effect === 'scry') {
-                // Simplified Scry
-            }
+            if (card.effect === 'scry') { }
 
-            // Cleanup
             player.hand.splice(cardIdx, 1);
             
             if (card.banish) {
-                // 除外
+                addLog(`${card.name} was banished.`);
             } else if (card.effect === 'dmg_recycle') {
                 player.deck.unshift(card);
             } else {
                 player.discard.push(card);
             }
 
-            render(); // 即時反映
+            render(); 
             window.pushState();
         }
 
@@ -920,17 +952,26 @@
             if (!checkMyTurn('BATTLE')) return;
             
             const currentActor = window.gameState.battle.activePlayer;
-            const roundOwner = (window.gameState.round % 2 !== 0) ? 0 : 1;
-            const secondActor = (roundOwner === 0) ? 1 : 0;
-
-            if (currentActor === roundOwner) {
-                // First player finished, swap to second
-                window.gameState.battle.activePlayer = secondActor;
+            
+            if (!window.localState.battleActionTaken) {
+                window.gameState.battle.passCount += 1;
+                addLog(`${window.gameState.players[window.myPlayerIndex].name} passes.`);
             } else {
-                // Second player finished, end round
-                endRound();
-                return; // endRound calls pushState
+                window.gameState.battle.passCount = 0; 
+                addLog(`${window.gameState.players[window.myPlayerIndex].name} ends turn.`);
             }
+
+            if (window.gameState.battle.passCount >= 2) {
+                addLog("Both passed. End of Battle Phase.");
+                endRound();
+                return;
+            }
+
+            // 【修正】常に 0 -> 1 -> 0 -> ... と交代
+            window.gameState.battle.activePlayer = (currentActor === 0) ? 1 : 0;
+            
+            window.localState.battleActionTaken = false; 
+            
             window.pushState();
         }
 
@@ -943,7 +984,6 @@
             });
             window.gameState.round++;
             if (window.gameState.round > CONSTANTS.MAX_ROUNDS) {
-                // Life lead win
                 let p1 = window.gameState.players[0];
                 let p2 = window.gameState.players[1];
                 if(p1.life > p2.life) forceEndGame("Player 1", "Time Limit");
@@ -955,6 +995,13 @@
         }
 
         // --- Utils ---
+        function addLog(msg) {
+            if (!window.gameState.logs) window.gameState.logs = [];
+            const ts = new Date().toTimeString().split(' ')[0];
+            window.gameState.logs.push(`[${ts}] ${msg}`);
+            if (window.gameState.logs.length > 50) window.gameState.logs.shift();
+        }
+
         function drawCards(p, n) {
             for(let i=0; i<n; i++) {
                 if (p.deck.length === 0) {
@@ -984,16 +1031,16 @@
             document.getElementById('round-indicator').innerText = `ROUND ${window.gameState.round}`;
             document.getElementById('phase-display').innerText = window.gameState.phase;
 
-            // Action Log
-            const actionDisplay = document.getElementById('last-action-display');
-            if (window.gameState.lastAction) {
-                const act = window.gameState.lastAction;
-                actionDisplay.innerHTML = `<span class="text-gray-400">${act.player}:</span> <span class="font-bold text-white">${act.card}</span><br><span class="text-xs text-yellow-500">${act.text}</span>`;
-                actionDisplay.classList.add('show');
-                // Auto hide after 3s handled by CSS transition logic usually, but here state persists. 
-                // We keep it visible as "Last Action"
-            } else {
-                actionDisplay.classList.remove('show');
+            // Logs
+            const logContent = document.getElementById('log-content');
+            if (window.gameState.logs) {
+                logContent.innerHTML = window.gameState.logs.slice().reverse().map(l => `<div class="log-entry">${l}</div>`).join('');
+            }
+
+            // Cut-in Check
+            if (window.gameState.latestPlay && window.gameState.latestPlay.timestamp > window.localState.lastPlayTimestamp) {
+                window.localState.lastPlayTimestamp = window.gameState.latestPlay.timestamp;
+                showCutIn(window.gameState.latestPlay.card, window.gameState.latestPlay.player);
             }
 
             // Stats
@@ -1009,7 +1056,6 @@
             const mArea = document.getElementById('market-area');
             mArea.innerHTML = '';
             
-            // バトルフェイズではカードを表示しない
             if (window.gameState.phase !== 'BATTLE') {
                 window.gameState.market.forEach((c, i) => {
                     let isTarget = (window.gameState.phase === 'BIDDING' && window.gameState.bidding.targetIdx === i);
@@ -1032,7 +1078,8 @@
                     document.getElementById('bid-card-preview').innerHTML = createCardHTML(targetCard, '', '');
                 }
 
-                document.getElementById('bid-current-val').innerText = window.gameState.bidding.currentBid;
+                const currentBid = window.gameState.bidding.currentBid;
+                document.getElementById('bid-current-val').innerText = currentBid;
                 let highest = window.gameState.bidding.highestBidder;
                 document.getElementById('bid-highest-player').innerText = highest === null ? "None" : (highest === window.myPlayerIndex ? "YOU" : "OPPONENT");
 
@@ -1040,12 +1087,11 @@
                     document.getElementById('bid-controls').classList.remove('hidden');
                     document.getElementById('bid-waiting-msg').classList.add('hidden');
                     
-                    // ビッド値のリセットロジック
-                    if (window.localState.lastTargetIdx !== window.gameState.bidding.targetIdx) {
-                        let min = window.gameState.bidding.currentBid + 1;
-                        if(window.gameState.bidding.currentBid === 0) min = 1;
-                        document.getElementById('player-bid-val').innerText = min;
-                        window.localState.lastTargetIdx = window.gameState.bidding.targetIdx;
+                    if (window.localState.lastBidSeen !== currentBid) {
+                        let nextMin = currentBid + 1;
+                        if(currentBid === 0) nextMin = 1;
+                        document.getElementById('player-bid-val').innerText = nextMin;
+                        window.localState.lastBidSeen = currentBid;
                     }
                     
                 } else {
@@ -1091,7 +1137,6 @@
                 h2.innerHTML += `<div class="w-12 h-16 bg-gray-800 border border-gray-600 rounded"></div>`;
             });
 
-            // 勝敗画面の同期チェック
             checkWinnerRender(me, opp);
         }
 
@@ -1157,6 +1202,24 @@
             if(c.type==='A') return '⚔️';
             if(c.type==='B') return '🛡️';
             return '🔮';
+        }
+
+        function showCutIn(card, playerName) {
+            const overlay = document.getElementById('cut-in-overlay');
+            const container = document.getElementById('cut-in-card-container');
+            const nameEl = document.getElementById('cut-in-player-name');
+            
+            nameEl.innerText = `${playerName} PLAYS`;
+            container.innerHTML = createCardHTML(card, 'transform scale-150 shadow-2xl');
+            
+            overlay.classList.remove('hidden');
+            void overlay.offsetWidth; 
+            overlay.classList.add('active');
+            
+            setTimeout(() => {
+                overlay.classList.remove('active');
+                setTimeout(() => overlay.classList.add('hidden'), 300);
+            }, 1500);
         }
 
         // Particle BG
