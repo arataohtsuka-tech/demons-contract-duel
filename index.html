@@ -293,8 +293,7 @@
                 wrapper.onclick = () => {
                     selector.classList.remove('active');
                     setTimeout(() => selector.classList.add('hidden'), 200);
-                    callback(originalIndex); // originalIndex is index in passed 'cards', need to map back? 
-                    // Wait, showCardSelector caller should pass objects with original indices if needed.
+                    callback(originalIndex);
                 };
                 container.appendChild(wrapper);
             });
@@ -647,7 +646,7 @@
     </div>
 
     <script>
-        // --- CONSTANTS & CARD DB (Updated IDs) ---
+        // --- CONSTANTS & CARD DB (Updated to Specs) ---
         const CONSTANTS = { MAX_ROUNDS: 10, INITIAL_LIFE: 66, INITIAL_HAND: 3 };
 
         const CARD_DB = [
@@ -655,13 +654,13 @@
             { id: 'S-1', type: 'S', name: '生贄の血', cost: 0, text: '相手に1ダメージを与える。', power: 1, selfDmg: 0, effect: 'dmg' },
             { id: 'S-2', type: 'S', name: '微弱な魔力', cost: 1, text: 'カードを1枚引く。自身のライフを1失う。', power: 0, selfDmg: 1, effect: 'draw' },
             // A - Attack
-            { id: 'A-1', type: 'A', name: '儀式の短剣', cost: 1, text: '相手に2ダメージを与える。', power: 2, selfDmg: 0, effect: 'dmg' },
-            { id: 'A-2', type: 'A', name: '魔力集中', cost: 2, text: 'カードを1枚引く。相手に2ダメージを与える。', power: 2, selfDmg: 0, effect: 'dmg_draw' },
-            { id: 'A-3', type: 'A', name: '浄化の火', cost: 3, text: '相手に3ダメージを与える。捨て札にあるSカードを1枚除外する（選択）。', power: 3, selfDmg: 0, effect: 'dmg_purge' },
-            { id: 'A-4', type: 'A', name: '強欲の剣', cost: 4, text: 'カードを1枚引く。相手に5ダメージを与える。', power: 5, selfDmg: 0, effect: 'dmg_draw' },
-            { id: 'A-5', type: 'A', name: '連鎖の呪い', cost: 4, text: '相手に3ダメージを与える。使用後、捨て札ではなく山札の下に戻る。', power: 3, selfDmg: 0, effect: 'dmg_recycle' },
-            { id: 'A-6', type: 'A', name: '魂の吸収', cost: 6, text: '相手に7ダメージを与える。自身のライフを3回復する。', power: 7, selfDmg: 0, effect: 'dmg_heal', val: 3 },
-            { id: 'A-7', type: 'A', name: '悪魔の契約', cost: 9, text: '相手に30ダメージを与える。自身のライフを30失う。', power: 30, selfDmg: 30, effect: 'dmg' },
+            { id: 'A-1', type: 'A', name: '儀式の短剣', cost: 0, text: '相手に2ダメージを与える。', power: 2, selfDmg: 0, effect: 'dmg' },
+            { id: 'A-2', type: 'A', name: '魔力集中', cost: 1, text: 'カードを1枚引く。相手に2ダメージを与える。', power: 2, selfDmg: 0, effect: 'dmg_draw' },
+            { id: 'A-3', type: 'A', name: '浄化の火', cost: 2, text: '相手に3ダメージを与える。捨て札にあるSカードを1枚除外する（選択）。', power: 3, selfDmg: 0, effect: 'dmg_purge' },
+            { id: 'A-4', type: 'A', name: '強欲の剣', cost: 3, text: 'カードを1枚引く。相手に5ダメージを与える。', power: 5, selfDmg: 0, effect: 'dmg_draw' },
+            { id: 'A-5', type: 'A', name: '連鎖の呪い', cost: 2, text: '相手に3ダメージを与える。使用後、捨て札ではなく山札の下に戻る。', power: 3, selfDmg: 0, effect: 'dmg_recycle' },
+            { id: 'A-6', type: 'A', name: '魂の吸収', cost: 4, text: '相手に5ダメージを与える。自身のライフを3回復する。', power: 5, selfDmg: 0, effect: 'dmg_heal', val: 3 },
+            { id: 'A-7', type: 'A', name: '悪魔の契約', cost: 9, text: '相手に20ダメージを与える。自身のライフを20失う。', power: 20, selfDmg: 20, effect: 'dmg' },
             // B - Defense
             { id: 'B-1', type: 'B', name: '瞬間修復', cost: 1, text: '自身のライフを2回復する。', power: 0, selfDmg: 0, effect: 'heal', val: 2 },
             { id: 'B-2', type: 'B', name: '魂の解放', cost: 2, text: '自身のライフを2回復する。手札を1枚選び除外する。', power: 0, selfDmg: 0, effect: 'heal_banish', val: 2 },
@@ -671,8 +670,8 @@
             // C - Control
             { id: 'C-1', type: 'C', name: '魔力の湧出', cost: 0, text: 'このターンのみマナ+2。使用後、このカードはゲームから除外される。', power: 0, selfDmg: 0, effect: 'mana_boost', val: 2, banish: true },
             { id: 'C-2', type: 'C', name: '未来の視線', cost: 1, text: '山札の上から4枚を見て、好きな順番で戻す。（未実装：シャッフル）', power: 0, selfDmg: 0, effect: 'scry' },
-            { id: 'C-3', type: 'C', name: '知識の譲渡', cost: 3, text: 'カードを2枚引く。', power: 0, selfDmg: 0, effect: 'draw_2' },
-            { id: 'C-4', type: 'C', name: '時の砂', cost: 5, text: '捨て札のSカードを1枚除外した後、捨て札を山札に戻しシャッフルする。1枚引く。', power: 0, selfDmg: 0, effect: 'reshuffle_draw' },
+            { id: 'C-3', type: 'C', name: '知識の譲渡', cost: 2, text: 'カードを2枚引く。', power: 0, selfDmg: 0, effect: 'draw_2' },
+            { id: 'C-4', type: 'C', name: '時の砂', cost: 2, text: '捨て札のSカードを1枚除外した後、捨て札を山札に戻しシャッフルする。1枚引く。', power: 0, selfDmg: 0, effect: 'reshuffle_draw' },
             { id: 'C-5', type: 'C', name: '天使の寵愛', cost: 10, text: '【特殊勝利】このゲームに勝利する。', power: 0, selfDmg: 0, effect: 'win' }
         ];
 
@@ -847,9 +846,12 @@
                 
                 if (window.gameState.bidding.passCount >= 2) {
                     addLog("両者パス。カードは破棄されました");
-                    let roundOwner = (window.gameState.round % 2 !== 0) ? 0 : 1; 
+                    // 両者パスの場合、今回の開始プレイヤーの「相手」から次を始める
+                    let currentStarter = window.gameState.bidding.starter;
+                    let nextStarter = (currentStarter === 0) ? 1 : 0;
+
                     let nextIdx = window.gameState.bidding.targetIdx + 1;
-                    startBidding(nextIdx, roundOwner);
+                    startBidding(nextIdx, nextStarter);
                 } else {
                     window.gameState.bidding.turn = (window.myPlayerIndex === 0) ? 1 : 0;
                     window.pushState();
@@ -875,14 +877,11 @@
 
             // B-2 logic: Manual select from hand (excluding self)
             if (card.id === 'B-2' && purgeTargetIdx === null) {
-                // Selectable cards: all cards in hand except the one being played
                 const handCards = player.hand.map((c, i) => ({...c, originalIdx: i})).filter((c, i) => i !== cardIdx);
-                
                 if (handCards.length > 0) {
                     window.localState.pendingCardIdx = cardIdx;
                     showCardSelector(handCards, (selectedIndex) => {
                         if (selectedIndex !== null) {
-                            // selectedIndex is index in filtered array, get original index
                             const trueHandIdx = handCards[selectedIndex].originalIdx;
                             playCard(cardIdx, trueHandIdx);
                         }
@@ -897,13 +896,6 @@
                 if (sCards.length > 0) {
                     window.localState.pendingCardIdx = cardIdx;
                     showCardSelector(sCards, (selectedIndex) => {
-                        // For A-3, logic was using splice on discard directly, so we need original index.
-                        // showCardSelector returns index in the PASSED array.
-                        // We need to map it back to original discard index.
-                        // Wait, previous implementation of showCardSelector used originalIndex from forEach(card, originalIndex).
-                        // But here we pass sCards. The originalIndex in showCardSelector loop is index in sCards.
-                        // So we need to store true index in card object.
-                        
                         if (selectedIndex !== null) {
                             const trueDiscardIdx = sCards[selectedIndex].originalIdx;
                             playCard(cardIdx, trueDiscardIdx);
@@ -919,8 +911,7 @@
             }
 
             addLog(`${player.name} が ${card.name} を使用`);
-            // window.gameState.latestPlay = { card, player: player.name, timestamp: Date.now() }; // Removed
-
+            
             player.mana -= card.cost;
             let dmg = card.power;
             
@@ -960,13 +951,10 @@
                 let heal = card.val || 0;
                 player.life += heal;
                 
-                // B-2 logic execution
                 if (card.id === 'B-2' && purgeTargetIdx !== null) {
                     const targetName = player.hand[purgeTargetIdx].name;
                     player.hand.splice(purgeTargetIdx, 1);
                     addLog(`${targetName} を手札から除外しました`);
-                    
-                    // Adjustment if purged card was before played card
                     if (purgeTargetIdx < cardIdx) {
                         cardIdx--;
                     }
@@ -977,7 +965,6 @@
             if (card.effect === 'reflect') player.reflect = true;
             if (card.effect === 'mana_boost') player.mana += card.val;
             
-            // A-3 logic execution
             if (card.id === 'A-3' && purgeTargetIdx !== null) {
                 player.discard.splice(purgeTargetIdx, 1);
                 addLog(`捨て札を除外しました`);
@@ -1272,4 +1259,4 @@
 
     </script>
 </body>
-</html>
+</html>        
