@@ -27,8 +27,7 @@
             lastTargetIdx: -1, 
             pendingCardIdx: null,
             lastBidSeen: -1,
-            lastPlayTimestamp: 0,
-            battleActionTaken: false 
+            lastPlayTimestamp: 0
         };
 
         const COLLECTION_NAME = 'demons_contract_rooms_v3'; 
@@ -170,13 +169,7 @@
             window.unsubscribeRoom = onSnapshot(roomRef, (doc) => {
                 if (doc.exists()) {
                     const data = doc.data();
-                    if (data.gameState) {
-                        // Detect turn change to reset local action state
-                        if (window.gameState && window.gameState.battle.activePlayer !== data.gameState.battle.activePlayer) {
-                            window.localState.battleActionTaken = false;
-                        }
-                        window.gameState = data.gameState;
-                    }
+                    if (data.gameState) window.gameState = data.gameState;
                     if (data.status === 'PLAYING') {
                          const waiting = document.getElementById('waiting-screen');
                          if(!waiting.classList.contains('hidden')) {
@@ -314,12 +307,7 @@
             if (!window.gameState.logs) window.gameState.logs = [];
             const timestamp = new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
             window.gameState.logs.push(`[${timestamp}] ${msg}`);
-            // Keep log size reasonable
             if (window.gameState.logs.length > 50) window.gameState.logs.shift();
-        }
-
-        function showCutIn(card, playerName) {
-            // Cut-in removed as per request
         }
 
         initFirebase();
@@ -513,8 +501,8 @@
             <p>手札のカードを、マナを消費して使用します。毎ラウンド、最大マナが増えます（R1=1マナ ... R10=10マナ）。</p>
             <ul>
                 <li>常に <strong>Player 1</strong> から行動開始。</li>
-                <li>カードを使用せず「ターン終了」すると、<strong>パス</strong>扱いとなり、そのラウンド中はもう行動できません。</li>
-                <li>お互いがパス（行動終了）するとラウンド終了です。</li>
+                <li>カードを使用せず「フェイズ終了」を押すと、手番が相手に移ります。</li>
+                <li>お互いが1回ずつフェイズを終了すると、次のラウンドへ進みます。</li>
             </ul>
         </div>
         <button onclick="closeRules()" class="btn-gothic mt-4 z-50">閉じる</button>
@@ -614,7 +602,7 @@
 
             <!-- Battle Turn Indicator -->
             <div id="battle-ui" class="absolute bottom-4 z-20 hidden">
-                <button id="end-turn-btn" onclick="endBattlePhase()" class="btn-gothic bg-blue-900/50 text-white px-8 py-2">ターン終了</button>
+                <button id="end-turn-btn" onclick="endBattlePhase()" class="btn-gothic bg-blue-900/50 text-white px-8 py-2">フェイズ終了</button>
             </div>
             <div id="wait-banner" class="absolute bottom-12 bg-black/80 px-4 py-1 rounded text-gray-400 text-sm hidden">相手のターン</div>
         </div>
@@ -688,7 +676,7 @@
             market: [],
             contractDeck: [],
             bidding: { targetIdx: 0, currentBid: 0, highestBidder: null, turn: 0, passCount: 0, starter: 0 },
-            battle: { activePlayer: 0, passCount: 0 }, // Changed structure
+            battle: { activePlayer: 0 }, // Removed passCount as it's no longer needed for alternating logic
             winner: null,
             winReason: null,
             logs: [],
@@ -711,8 +699,7 @@
                 life: CONSTANTS.INITIAL_LIFE,
                 mana: 1, maxMana: 1,
                 deck: [], hand: [], discard: [],
-                shield: 0, nullify: false, reflect: false,
-                dropped: false // New: Track if player has passed/dropped for the round
+                shield: 0, nullify: false, reflect: false
             }));
 
             window.gameState.players.forEach(p => {
@@ -743,7 +730,6 @@
             window.gameState.players.forEach(p => {
                 p.maxMana = mana;
                 p.mana = mana;
-                p.dropped = false; // Reset drop status
             });
 
             addLog(`=== 第 ${window.gameState.round} ラウンド 開始 ===`);
@@ -805,7 +791,6 @@
             
             addLog(`${winner.name} が ${card.name} をライフ ${cost} で落札`);
 
-            // 落札しなかったプレイヤー（＝今回負けた側）が次の開始権を持つ
             let nextStarter = (winnerIdx === 0) ? 1 : 0;
             let nextIdx = window.gameState.bidding.targetIdx + 1;
             startBidding(nextIdx, nextStarter);
@@ -848,12 +833,9 @@
                 
                 if (window.gameState.bidding.passCount >= 2) {
                     addLog("両者パス。カードは破棄されました");
-                    // 両者パスの場合、今回の開始プレイヤーの「相手」から次を始める
-                    let currentStarter = window.gameState.bidding.starter;
-                    let nextStarter = (currentStarter === 0) ? 1 : 0;
-
+                    let roundOwner = (window.gameState.round % 2 !== 0) ? 0 : 1; 
                     let nextIdx = window.gameState.bidding.targetIdx + 1;
-                    startBidding(nextIdx, nextStarter);
+                    startBidding(nextIdx, roundOwner);
                 } else {
                     window.gameState.bidding.turn = (window.myPlayerIndex === 0) ? 1 : 0;
                     window.pushState();
@@ -863,8 +845,8 @@
 
         function startBattlePhase() {
             window.gameState.phase = 'BATTLE';
+            // 【修正】バトルフェイズの開始は常に Player 1
             window.gameState.battle.activePlayer = 0;
-            window.gameState.battle.passCount = 0; 
             addLog("=== バトルフェイズ 開始 ===");
             window.pushState();
         }
@@ -895,8 +877,6 @@
 
             addLog(`${player.name} が ${card.name} を使用`);
             window.gameState.latestPlay = { card, player: player.name, timestamp: Date.now() };
-
-            window.localState.battleActionTaken = true; 
 
             player.mana -= card.cost;
             let dmg = card.power;
@@ -976,50 +956,19 @@
         function endBattlePhase() {
             if (!checkMyTurn('BATTLE')) return;
             
-            const currentPlayer = window.gameState.players[window.myPlayerIndex];
-            
-            // If NO action taken, mark as dropped (Hard Pass)
-            if (!window.localState.battleActionTaken) {
-                currentPlayer.dropped = true;
-                addLog(`${currentPlayer.name} がパス（ラウンド終了）`);
-            } else {
-                addLog(`${currentPlayer.name} がターン終了`);
-            }
+            const currentActor = window.gameState.battle.activePlayer;
+            const pName = window.gameState.players[window.myPlayerIndex].name;
 
-            // Check if both dropped
-            const p1 = window.gameState.players[0];
-            const p2 = window.gameState.players[1];
-            
-            if (p1.dropped && p2.dropped) {
-                addLog("両者パス。バトルフェイズ終了");
+            addLog(`${pName} がフェイズ終了`);
+
+            // P1 (0) -> P2 (1) -> Round End
+            if (currentActor === 0) {
+                window.gameState.battle.activePlayer = 1;
+            } else {
                 endRound();
                 return;
             }
-
-            // Determine next player
-            // If current player dropped, next is opponent.
-            // If current player didn't drop, next is opponent IF opponent hasn't dropped.
-            // If opponent dropped, turn stays with current player.
             
-            let nextPlayerIdx = (window.myPlayerIndex === 0) ? 1 : 0;
-            const nextPlayer = window.gameState.players[nextPlayerIdx];
-
-            if (nextPlayer.dropped) {
-                // Opponent dropped, stay with me (unless I also dropped, handled above)
-                if (currentPlayer.dropped) {
-                    // Should be caught by both dropped check, but safety fallback
-                    endRound();
-                    return;
-                }
-                // Keep turn
-                window.gameState.battle.activePlayer = window.myPlayerIndex;
-                addLog(`${nextPlayer.name} はパスしているため、続けて行動可能`);
-            } else {
-                // Swap
-                window.gameState.battle.activePlayer = nextPlayerIdx;
-            }
-            
-            window.localState.battleActionTaken = false; 
             window.pushState();
         }
 
@@ -1155,12 +1104,11 @@
                 if (isMyBattleTurn) {
                     battleUI.classList.remove('hidden');
                     waitBanner.classList.add('hidden');
-                    // Dynamic Button Text
-                    endBtn.innerText = window.localState.battleActionTaken ? "ターン終了" : "パス（ラウンド終了）";
+                    endBtn.innerText = "フェイズ終了";
                 } else {
                     battleUI.classList.add('hidden');
                     waitBanner.classList.remove('hidden');
-                    waitBanner.innerText = opp.dropped ? "相手はパスしています（連続行動可能）" : "相手のターン";
+                    waitBanner.innerText = "相手のターン";
                 }
             } else {
                 battleUI.classList.add('hidden');
