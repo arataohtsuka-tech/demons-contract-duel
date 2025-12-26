@@ -309,12 +309,17 @@
             setTimeout(() => selector.classList.add('hidden'), 200);
         }
 
-        // --- Log (Japanese) ---
+        // --- Log & Cut-in ---
         function addLog(msg) {
             if (!window.gameState.logs) window.gameState.logs = [];
             const timestamp = new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
             window.gameState.logs.push(`[${timestamp}] ${msg}`);
+            // Keep log size reasonable
             if (window.gameState.logs.length > 50) window.gameState.logs.shift();
+        }
+
+        function showCutIn(card, playerName) {
+            // Cut-in removed as per request
         }
 
         initFirebase();
@@ -425,6 +430,23 @@
         #log-header { background: #333; padding: 4px 8px; font-weight: bold; cursor: move; }
         #log-content { flex-grow: 1; overflow-y: auto; padding: 8px; display: flex; flex-direction: column-reverse; }
         .log-entry { margin-bottom: 4px; border-bottom: 1px solid #222; padding-bottom: 2px; }
+        
+        /* Rules Viewer */
+        .rules-content {
+            background: rgba(20, 20, 20, 0.95);
+            border: 2px solid var(--accent-gold);
+            border-radius: 8px;
+            padding: 2rem;
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            color: #ddd;
+            text-align: left;
+        }
+        .rules-content h3 { color: var(--accent-gold); font-family: 'Cinzel', serif; margin-top: 1.5rem; margin-bottom: 0.5rem; border-bottom: 1px solid #555; }
+        .rules-content ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 1rem; }
+        .rules-content p { margin-bottom: 1rem; line-height: 1.6; }
     </style>
 </head>
 <body class="h-screen flex flex-col">
@@ -456,10 +478,46 @@
         <div class="bg-gray-900 border border-yellow-600 p-8 rounded text-center w-80 flex flex-col gap-4">
             <h2 class="text-2xl text-yellow-500 cinzel">メニュー</h2>
             <button onclick="showCardList()" class="btn-gothic w-full">📖 カード一覧</button>
+            <button onclick="showRules()" class="btn-gothic w-full">📜 ルール概要</button>
             <button onclick="surrenderGame()" class="btn-gothic w-full border-red-500 text-red-500 hover:bg-red-900/30">🏳️ 降参</button>
             <div class="h-px bg-gray-700 my-2"></div>
             <button onclick="toggleMenu()" class="btn-gothic w-full border-gray-500 text-gray-400">閉じる</button>
         </div>
+    </div>
+
+    <!-- Rules Viewer -->
+    <div id="rules-viewer" class="overlay hidden" style="z-index: 210;">
+        <div class="rules-content">
+            <h2 class="text-3xl text-center text-yellow-500 mb-4 cinzel">GAME RULES</h2>
+            
+            <h3>勝利条件</h3>
+            <ul>
+                <li>相手のライフを0にする。</li>
+                <li>「天使の寵愛」カードを使用する。</li>
+                <li>10ラウンド終了時、ライフが多い方の勝利。</li>
+            </ul>
+
+            <h3>ゲームの流れ</h3>
+            <p>1ラウンドは「ドラフトフェイズ（競り）」と「バトルフェイズ」で構成されます。</p>
+            
+            <h3>1. ドラフトフェイズ</h3>
+            <p>ライフを支払ってカードを獲得します。獲得したカードは「捨て札」に行きます（即座には使えません）。</p>
+            <ul>
+                <li>市場の3枚のカードに対し、順番に入札を行います。</li>
+                <li>1枚目は常に <strong>Player 2</strong> から入札開始。</li>
+                <li>2枚目以降は、直前のカードを獲得しなかった（競り負けた）プレイヤーから入札開始。</li>
+                <li>入札額の上限は「現在ライフ - 1」です。</li>
+            </ul>
+
+            <h3>2. バトルフェイズ</h3>
+            <p>手札のカードを、マナを消費して使用します。毎ラウンド、最大マナが増えます（R1=1マナ ... R10=10マナ）。</p>
+            <ul>
+                <li>常に <strong>Player 1</strong> から行動開始。</li>
+                <li>カードを使用せず「ターン終了」すると、<strong>パス</strong>扱いとなり、そのラウンド中はもう行動できません。</li>
+                <li>お互いがパス（行動終了）するとラウンド終了です。</li>
+            </ul>
+        </div>
+        <button onclick="closeRules()" class="btn-gothic mt-4 z-50">閉じる</button>
     </div>
 
     <!-- Card List Viewer -->
@@ -653,7 +711,8 @@
                 life: CONSTANTS.INITIAL_LIFE,
                 mana: 1, maxMana: 1,
                 deck: [], hand: [], discard: [],
-                shield: 0, nullify: false, reflect: false
+                shield: 0, nullify: false, reflect: false,
+                dropped: false // New: Track if player has passed/dropped for the round
             }));
 
             window.gameState.players.forEach(p => {
@@ -684,13 +743,14 @@
             window.gameState.players.forEach(p => {
                 p.maxMana = mana;
                 p.mana = mana;
+                p.dropped = false; // Reset drop status
             });
 
             addLog(`=== 第 ${window.gameState.round} ラウンド 開始 ===`);
 
             setTimeout(() => {
-                // Draft bidding start rotates by round
-                startBidding(0, (window.gameState.round % 2 !== 0) ? 0 : 1);
+                // Draft 1st card always starts with Player 2 (index 1)
+                startBidding(0, 1);
             }, 1000);
         }
 
@@ -745,8 +805,7 @@
             
             addLog(`${winner.name} が ${card.name} をライフ ${cost} で落札`);
 
-            // Next card starter is the LOSER (or other player if tied/passed)
-            // Logic: Winner bought, so OTHER player starts next bid
+            // 落札しなかったプレイヤー（＝今回負けた側）が次の開始権を持つ
             let nextStarter = (winnerIdx === 0) ? 1 : 0;
             let nextIdx = window.gameState.bidding.targetIdx + 1;
             startBidding(nextIdx, nextStarter);
@@ -789,9 +848,12 @@
                 
                 if (window.gameState.bidding.passCount >= 2) {
                     addLog("両者パス。カードは破棄されました");
-                    let roundOwner = (window.gameState.round % 2 !== 0) ? 0 : 1; 
+                    // 両者パスの場合、今回の開始プレイヤーの「相手」から次を始める
+                    let currentStarter = window.gameState.bidding.starter;
+                    let nextStarter = (currentStarter === 0) ? 1 : 0;
+
                     let nextIdx = window.gameState.bidding.targetIdx + 1;
-                    startBidding(nextIdx, roundOwner);
+                    startBidding(nextIdx, nextStarter);
                 } else {
                     window.gameState.bidding.turn = (window.myPlayerIndex === 0) ? 1 : 0;
                     window.pushState();
@@ -801,7 +863,6 @@
 
         function startBattlePhase() {
             window.gameState.phase = 'BATTLE';
-            // 【修正】バトルフェイズの開始は常に Player 1
             window.gameState.battle.activePlayer = 0;
             window.gameState.battle.passCount = 0; 
             addLog("=== バトルフェイズ 開始 ===");
@@ -833,9 +894,8 @@
             }
 
             addLog(`${player.name} が ${card.name} を使用`);
-            // window.gameState.latestPlay = { card, player: player.name, timestamp: Date.now() }; // Removed for no cut-in
+            window.gameState.latestPlay = { card, player: player.name, timestamp: Date.now() };
 
-            window.gameState.battle.passCount = 0;
             window.localState.battleActionTaken = true; 
 
             player.mana -= card.cost;
@@ -912,30 +972,54 @@
             window.pushState();
         }
 
+        // --- HARD PASS LOGIC ---
         function endBattlePhase() {
             if (!checkMyTurn('BATTLE')) return;
             
-            const currentActor = window.gameState.battle.activePlayer;
+            const currentPlayer = window.gameState.players[window.myPlayerIndex];
             
+            // If NO action taken, mark as dropped (Hard Pass)
             if (!window.localState.battleActionTaken) {
-                window.gameState.battle.passCount += 1;
-                addLog(`${window.gameState.players[window.myPlayerIndex].name} がパス`);
+                currentPlayer.dropped = true;
+                addLog(`${currentPlayer.name} がパス（ラウンド終了）`);
             } else {
-                window.gameState.battle.passCount = 0; 
-                addLog(`${window.gameState.players[window.myPlayerIndex].name} がターン終了`);
+                addLog(`${currentPlayer.name} がターン終了`);
             }
 
-            if (window.gameState.battle.passCount >= 2) {
+            // Check if both dropped
+            const p1 = window.gameState.players[0];
+            const p2 = window.gameState.players[1];
+            
+            if (p1.dropped && p2.dropped) {
                 addLog("両者パス。バトルフェイズ終了");
                 endRound();
                 return;
             }
 
-            // 【修正】常に 0 -> 1 -> 0 -> ... と交代
-            window.gameState.battle.activePlayer = (currentActor === 0) ? 1 : 0;
+            // Determine next player
+            // If current player dropped, next is opponent.
+            // If current player didn't drop, next is opponent IF opponent hasn't dropped.
+            // If opponent dropped, turn stays with current player.
+            
+            let nextPlayerIdx = (window.myPlayerIndex === 0) ? 1 : 0;
+            const nextPlayer = window.gameState.players[nextPlayerIdx];
+
+            if (nextPlayer.dropped) {
+                // Opponent dropped, stay with me (unless I also dropped, handled above)
+                if (currentPlayer.dropped) {
+                    // Should be caught by both dropped check, but safety fallback
+                    endRound();
+                    return;
+                }
+                // Keep turn
+                window.gameState.battle.activePlayer = window.myPlayerIndex;
+                addLog(`${nextPlayer.name} はパスしているため、続けて行動可能`);
+            } else {
+                // Swap
+                window.gameState.battle.activePlayer = nextPlayerIdx;
+            }
             
             window.localState.battleActionTaken = false; 
-            
             window.pushState();
         }
 
@@ -1001,8 +1085,6 @@
                 logContent.innerHTML = window.gameState.logs.slice().reverse().map(l => `<div class="log-entry">${l}</div>`).join('');
             }
 
-            // Cut-in Check removed
-
             // Stats
             document.getElementById('p1-life').innerText = me.life;
             document.getElementById('p2-life').innerText = opp.life;
@@ -1065,6 +1147,7 @@
 
             // Battle UI
             const battleUI = document.getElementById('battle-ui');
+            const endBtn = document.getElementById('end-turn-btn');
             const waitBanner = document.getElementById('wait-banner');
             const isMyBattleTurn = (window.gameState.phase === 'BATTLE' && window.gameState.battle.activePlayer === window.myPlayerIndex);
 
@@ -1072,9 +1155,12 @@
                 if (isMyBattleTurn) {
                     battleUI.classList.remove('hidden');
                     waitBanner.classList.add('hidden');
+                    // Dynamic Button Text
+                    endBtn.innerText = window.localState.battleActionTaken ? "ターン終了" : "パス（ラウンド終了）";
                 } else {
                     battleUI.classList.add('hidden');
                     waitBanner.classList.remove('hidden');
+                    waitBanner.innerText = opp.dropped ? "相手はパスしています（連続行動可能）" : "相手のターン";
                 }
             } else {
                 battleUI.classList.add('hidden');
