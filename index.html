@@ -29,8 +29,6 @@
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
         // ▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼
-        // 通常は config.js が読み込まれるため、ここは null のままでOKです。
-        // config.js が使えない環境（単一ファイル配布など）の場合のみ書き換えてください。
         const manualConfig = null;
         // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 
@@ -38,23 +36,14 @@
             const statusEl = document.getElementById('lobby-status');
             try {
                 let firebaseConfig;
-
-                // 1. Check external config file (config.js)
                 if (typeof window.FIREBASE_CONFIG !== 'undefined') {
                     firebaseConfig = window.FIREBASE_CONFIG;
-                    console.log("Loaded config from config.js");
-                }
-                // 2. Check for manual config (Inline)
-                else if (manualConfig) {
+                } else if (manualConfig) {
                     firebaseConfig = manualConfig;
-                    console.log("Loaded config from manualConfig");
-                } 
-                // 3. Check for Environment config (Preview Mode)
-                else if (typeof __firebase_config !== 'undefined') {
+                } else if (typeof __firebase_config !== 'undefined') {
                     firebaseConfig = JSON.parse(__firebase_config);
-                } 
-                else {
-                    throw new Error("設定が見つかりません。config.jsを作成するか、コード内のmanualConfigを書き換えてください。");
+                } else {
+                    throw new Error("設定未完了: config.jsを作成するかコード内のmanualConfigを書き換えてください。");
                 }
 
                 statusEl.innerText = "Connecting...";
@@ -340,7 +329,7 @@
 
         /* Card */
         .card {
-            width: 130px; height: 190px;
+            width: 140px; height: 210px; /* Slightly taller for text */
             background: var(--card-bg);
             border: 2px solid #333; border-radius: 8px;
             position: relative;
@@ -365,9 +354,20 @@
             font-weight: bold; font-size: 0.8rem; box-shadow: 0 0 5px var(--mana-blue);
         }
 
-        .card-title { font-size: 0.8rem; font-weight: bold; text-align: center; margin-top: 14px; line-height: 1.1; }
+        .card-title { font-size: 0.85rem; font-weight: bold; text-align: center; margin-top: 14px; line-height: 1.1; }
         .card-art { flex-grow: 1; display: flex; align-items: center; justify-content: center; font-size: 1.8rem; }
-        .card-desc { font-size: 0.65rem; text-align: center; color: #aaa; line-height: 1.2; height: 45px; overflow: hidden; }
+        /* Expanded Card Description */
+        .card-desc { 
+            font-size: 0.7rem; 
+            text-align: center; 
+            color: #ccc; 
+            line-height: 1.3; 
+            min-height: 60px; /* Fixed height area for text */
+            padding: 4px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 4px;
+            display: flex; align-items: center; justify-content: center;
+        }
 
         /* UI */
         .btn-gothic {
@@ -406,6 +406,17 @@
             gap: 1rem; width: 80%; max-width: 800px; max-height: 70vh; overflow-y: auto;
             padding: 1rem;
         }
+
+        /* Last Action Banner */
+        #last-action-display {
+            position: absolute; top: 70px; left: 50%; transform: translateX(-50%);
+            background: linear-gradient(90deg, transparent, rgba(0,0,0,0.8), transparent);
+            padding: 0.5rem 2rem; border-top: 1px solid #555; border-bottom: 1px solid #555;
+            color: #ffd700; font-family: 'Cinzel', serif; font-size: 1rem;
+            pointer-events: none; opacity: 0; transition: opacity 0.5s; z-index: 15;
+            text-shadow: 0 0 10px black; white-space: nowrap;
+        }
+        #last-action-display.show { opacity: 1; }
     </style>
 </head>
 <body class="h-screen flex flex-col">
@@ -479,6 +490,9 @@
 
     <main class="flex-grow flex flex-col relative p-2 overflow-hidden">
         
+        <!-- Last Action Banner -->
+        <div id="last-action-display">Player used Card Name</div>
+
         <!-- Opponent -->
         <div class="h-1/4 flex justify-between items-start px-4">
             <div class="flex flex-col items-center">
@@ -568,32 +582,32 @@
     </div>
 
     <script>
-        // --- CONSTANTS & CARD DB (Updated IDs) ---
+        // --- CONSTANTS & CARD DB (Updated Text) ---
         const CONSTANTS = { MAX_ROUNDS: 10, INITIAL_LIFE: 66, INITIAL_HAND: 3 };
 
         const CARD_DB = [
             // Starter
-            { id: 'S-1', type: 'S', name: '生贄の血', cost: 0, text: '相手に1ダメージ。', power: 1, selfDmg: 0, effect: 'dmg' },
-            { id: 'S-2', type: 'S', name: '微弱な魔力', cost: 1, text: '1ドロー。自身1ダメージ。', power: 0, selfDmg: 1, effect: 'draw' },
+            { id: 'S-1', type: 'S', name: '生贄の血', cost: 0, text: '相手に1ダメージを与える。', power: 1, selfDmg: 0, effect: 'dmg' },
+            { id: 'S-2', type: 'S', name: '微弱な魔力', cost: 1, text: 'カードを1枚引く。自身のライフを1失う。', power: 0, selfDmg: 1, effect: 'draw' },
             // A - Attack
-            { id: 'A-1', type: 'A', name: '儀式の短剣', cost: 1, text: '2ダメージ。', power: 2, selfDmg: 0, effect: 'dmg' },
-            { id: 'A-2', type: 'A', name: '魔力集中', cost: 2, text: '1ドロー。2ダメージ。', power: 2, selfDmg: 0, effect: 'dmg_draw' },
-            { id: 'A-3', type: 'A', name: '浄化の火', cost: 3, text: '3ダメージ。捨て札S除外。', power: 3, selfDmg: 0, effect: 'dmg_purge' },
-            { id: 'A-4', type: 'A', name: '強欲の剣', cost: 4, text: '1ドロー。5ダメージ。', power: 5, selfDmg: 0, effect: 'dmg_draw' },
-            { id: 'A-5', type: 'A', name: '連鎖の呪い', cost: 4, text: '3ダメージ。山札下へ戻る。', power: 3, selfDmg: 0, effect: 'dmg_recycle' },
-            { id: 'A-6', type: 'A', name: '魂の吸収', cost: 6, text: '7ダメージ。3回復。', power: 7, selfDmg: 0, effect: 'dmg_heal', val: 3 },
-            { id: 'A-7', type: 'A', name: '悪魔の契約', cost: 9, text: '30ダメージ。自身30ダメージ。', power: 30, selfDmg: 30, effect: 'dmg' },
+            { id: 'A-1', type: 'A', name: '儀式の短剣', cost: 1, text: '相手に2ダメージを与える。', power: 2, selfDmg: 0, effect: 'dmg' },
+            { id: 'A-2', type: 'A', name: '魔力集中', cost: 2, text: 'カードを1枚引く。相手に2ダメージを与える。', power: 2, selfDmg: 0, effect: 'dmg_draw' },
+            { id: 'A-3', type: 'A', name: '浄化の火', cost: 3, text: '相手に3ダメージを与える。捨て札にあるSカードを1枚除外する。', power: 3, selfDmg: 0, effect: 'dmg_purge' },
+            { id: 'A-4', type: 'A', name: '強欲の剣', cost: 4, text: 'カードを1枚引く。相手に5ダメージを与える。', power: 5, selfDmg: 0, effect: 'dmg_draw' },
+            { id: 'A-5', type: 'A', name: '連鎖の呪い', cost: 4, text: '相手に3ダメージを与える。使用後、捨て札ではなく山札の下に戻る。', power: 3, selfDmg: 0, effect: 'dmg_recycle' },
+            { id: 'A-6', type: 'A', name: '魂の吸収', cost: 6, text: '相手に7ダメージを与える。自身のライフを3回復する。', power: 7, selfDmg: 0, effect: 'dmg_heal', val: 3 },
+            { id: 'A-7', type: 'A', name: '悪魔の契約', cost: 9, text: '相手に30ダメージを与える。自身のライフを30失う。', power: 30, selfDmg: 30, effect: 'dmg' },
             // B - Defense
-            { id: 'B-1', type: 'B', name: '瞬間修復', cost: 1, text: '2回復。', power: 0, selfDmg: 0, effect: 'heal', val: 2 },
-            { id: 'B-2', type: 'B', name: '魂の解放', cost: 2, text: '2回復。手札1枚除外。', power: 0, selfDmg: 0, effect: 'heal_banish', val: 2 },
-            { id: 'B-3', type: 'B', name: '癒やしの刻印', cost: 3, text: '5回復。', power: 0, selfDmg: 0, effect: 'heal', val: 5 },
-            { id: 'B-4', type: 'B', name: '防御の結界', cost: 5, text: '次ダメージ無効化。', power: 0, selfDmg: 0, effect: 'nullify' },
-            { id: 'B-5', type: 'B', name: '反射の鏡', cost: 7, text: '次ダメ無効＆反射。', power: 0, selfDmg: 0, effect: 'reflect' },
+            { id: 'B-1', type: 'B', name: '瞬間修復', cost: 1, text: '自身のライフを2回復する。', power: 0, selfDmg: 0, effect: 'heal', val: 2 },
+            { id: 'B-2', type: 'B', name: '魂の解放', cost: 2, text: '自身のライフを2回復する。手札を1枚選び除外する。', power: 0, selfDmg: 0, effect: 'heal_banish', val: 2 },
+            { id: 'B-3', type: 'B', name: '癒やしの刻印', cost: 3, text: '自身のライフを5回復する。', power: 0, selfDmg: 0, effect: 'heal', val: 5 },
+            { id: 'B-4', type: 'B', name: '防御の結界', cost: 5, text: '次に受けるダメージを1回だけ無効化する。', power: 0, selfDmg: 0, effect: 'nullify' },
+            { id: 'B-5', type: 'B', name: '反射の鏡', cost: 7, text: '次に受けるダメージを無効化し、そのダメージを相手に与える。', power: 0, selfDmg: 0, effect: 'reflect' },
             // C - Control
-            { id: 'C-1', type: 'C', name: '魔力の湧出', cost: 0, text: 'マナ+2。使い切り。', power: 0, selfDmg: 0, effect: 'mana_boost', val: 2, banish: true },
-            { id: 'C-2', type: 'C', name: '未来の視線', cost: 1, text: '山札上3枚操作。', power: 0, selfDmg: 0, effect: 'scry' },
-            { id: 'C-3', type: 'C', name: '知識の譲渡', cost: 3, text: '2ドロー。', power: 0, selfDmg: 0, effect: 'draw_2' },
-            { id: 'C-4', type: 'C', name: '時の砂', cost: 5, text: '捨て札S除外＆山札戻し＆1ドロー。', power: 0, selfDmg: 0, effect: 'reshuffle_draw' },
+            { id: 'C-1', type: 'C', name: '魔力の湧出', cost: 0, text: 'このターンのみマナ+2。使用後、このカードはゲームから除外される。', power: 0, selfDmg: 0, effect: 'mana_boost', val: 2, banish: true },
+            { id: 'C-2', type: 'C', name: '未来の視線', cost: 1, text: '山札の上から3枚を見て、好きな順番で戻す。（未実装：シャッフル）', power: 0, selfDmg: 0, effect: 'scry' },
+            { id: 'C-3', type: 'C', name: '知識の譲渡', cost: 3, text: 'カードを2枚引く。', power: 0, selfDmg: 0, effect: 'draw_2' },
+            { id: 'C-4', type: 'C', name: '時の砂', cost: 5, text: '捨て札のSカードを全て除外した後、捨て札を山札に戻しシャッフルする。1枚引く。', power: 0, selfDmg: 0, effect: 'reshuffle_draw' },
             { id: 'C-5', type: 'C', name: '天使の寵愛', cost: 10, text: '【特殊勝利】このゲームに勝利する。', power: 0, selfDmg: 0, effect: 'win' }
         ];
 
@@ -607,7 +621,8 @@
             bidding: { targetIdx: 0, currentBid: 0, highestBidder: null, turn: 0, passCount: 0 },
             battle: { activePlayer: 0 },
             winner: null,
-            winReason: null
+            winReason: null,
+            lastAction: null // For action log
         };
 
         // --- Logic ---
@@ -643,6 +658,7 @@
             // Initialize Winner
             window.gameState.winner = null;
             window.gameState.winReason = null;
+            window.gameState.lastAction = null;
 
             startRound();
         }
@@ -813,6 +829,13 @@
                 return;
             }
 
+            // Update Action Log
+            window.gameState.lastAction = {
+                player: player.name,
+                card: card.name,
+                text: card.text
+            };
+
             // Pay Mana
             player.mana -= card.cost;
 
@@ -960,6 +983,18 @@
             document.getElementById('player-role-display').innerText = `You: ${me.name}`;
             document.getElementById('round-indicator').innerText = `ROUND ${window.gameState.round}`;
             document.getElementById('phase-display').innerText = window.gameState.phase;
+
+            // Action Log
+            const actionDisplay = document.getElementById('last-action-display');
+            if (window.gameState.lastAction) {
+                const act = window.gameState.lastAction;
+                actionDisplay.innerHTML = `<span class="text-gray-400">${act.player}:</span> <span class="font-bold text-white">${act.card}</span><br><span class="text-xs text-yellow-500">${act.text}</span>`;
+                actionDisplay.classList.add('show');
+                // Auto hide after 3s handled by CSS transition logic usually, but here state persists. 
+                // We keep it visible as "Last Action"
+            } else {
+                actionDisplay.classList.remove('show');
+            }
 
             // Stats
             document.getElementById('p1-life').innerText = me.life;
